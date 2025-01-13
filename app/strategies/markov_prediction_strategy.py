@@ -24,10 +24,14 @@ class MarkovPredictionStrategy(BaseStrategy):
         FROM ticker_data
         ORDER BY timestamp DESC
         """
-        conn = duckdb.connect(f"{self.db_base_path}/VIX_{timeframe}_data.db")
+        conn = duckdb.connect(f"{self.db_base_path}/VIX_1Day_data.db")
         df = conn.sql(query).fetchdf()
         conn.close()
         return df
+
+    def generate_next_price(self, ticker_data):
+        current_close, predicted_close = self.make_prediction(ticker_data, interval="1D")
+        return predicted_close
 
     def generate_signal(self, ticker_data):
         # based on 15m intervals
@@ -36,13 +40,24 @@ class MarkovPredictionStrategy(BaseStrategy):
         if timestamp.minute % 15 != 0:
             return {'buy': False, 'sell': False}
         
+        current_close, predicted_close = self.make_prediction(ticker_data)
+        
+        if predicted_close > current_close * 1.01:
+            return {'buy': True, 'sell': False, 'reason': 'predicted_close > current_close * 1.01', 'strategy': 'markov'}
+        elif predicted_close < current_close * 0.99:
+            return {'buy': False, 'sell': True, "reason": 'predicted_close < current_close * 0.99', 'strategy': 'markov'}
+        return {'buy': False, 'sell': False, 'reason': 'no signal', 'strategy': 'markov'}
+
+
+    def make_prediction(self, ticker_data, interval="15T"):
+        
         vix_data = self.fetch_vix_data()
         ticker_data = pd.merge(ticker_data, vix_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
 
         # Resample data into 15-minute intervals
-        ticker_data = self.resample_data(ticker_data, interval="15T")
+        ticker_data = self.resample_data(ticker_data, interval=interval)
         
         self.train_markov_chain(ticker_data)
         current_state = ticker_data[['close', 'volume', 'vwap', 'vix']].values[-1]
@@ -50,12 +65,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         
         current_close = current_state[0]
         predicted_close = predicted_state[0]
-        
-        if predicted_close > current_close * 1.01:
-            return {'buy': True, 'sell': False, 'reason': 'predicted_close > current_close * 1.01', 'strategy': 'markov'}
-        elif predicted_close < current_close * 0.99:
-            return {'buy': False, 'sell': True, "reason": 'predicted_close < current_close * 0.99', 'strategy': 'markov'}
-        return {'buy': False, 'sell': False, 'reason': 'no signal', 'strategy': 'markov'}
+        return current_close, predicted_close
 
     def predict_next_state(self, current_state, n_steps=1):
         state_index = np.where((self.unique_states == current_state).all(axis=1))[0][0]
