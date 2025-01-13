@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 Makefile
 internal/
+.pytest_cache/
