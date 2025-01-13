@@ -3,3 +3,5 @@
 dbs/
 __pycache__/
 *.pyc
+Makefile
+internal/
