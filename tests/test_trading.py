@@ -1,4 +1,4 @@
-import pytest, sys, os, duckdb
+import pytest, sys, os, duckdb, logging
 from datetime import timedelta
 from unittest.mock import  Mock
 
@@ -14,9 +14,11 @@ from tests import utils
 from tests.generate_mock_data import generate_candle_series, generate_trade
 from tests.mock_alpaca_broker import MockAlpacaBroker
 
-TICKERS = ['AAPL', 'QQQ', 'VIX']
+TICKERS = ['AAPL', 'QQQ', 'VXX']
 
 last_known_real_candle = {ticker: utils.get_most_recent_timestamp(ticker) for ticker in TICKERS}
+
+logging.basicConfig(level=logging.INFO)
 
 @pytest.mark.asyncio
 async def test_trading_system(monkeypatch):
@@ -76,6 +78,7 @@ async def test_trading_system(monkeypatch):
     curr_date = start
     while curr_date < end:
         # Fetch data - monkeypatch will return `generate_next_mock_data`
+        logging.info(f"Fetching data for {curr_date}")
         data = data_handler.fetch_data()
         save_market_data(data, db_base_path=data_handler.db_base_path)
         if data:
@@ -84,8 +87,8 @@ async def test_trading_system(monkeypatch):
         curr_date += timedelta(minutes=5)
     
     # Print the mock broker account balances
-    print("Mock Broker Account Balances:")
-    print(broker.get_account())
+    logging.info("Mock Broker Account Balances:")
+    logging(broker.get_account())
 
 if __name__ == "__main__":
     import asyncio

@@ -3,6 +3,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 from alpaca.data import TimeFrame
+import logging
 
 class StockPredictor:
     def __init__(self, ticker, db_base_path='tests/data'):
@@ -11,6 +12,12 @@ class StockPredictor:
         self.transition_matrix = None
         self.unique_states = None
         self.states = None
+        self.close_mean = None
+        self.close_std = None
+        self.volume_mean = None
+        self.volume_std = None
+        self.vxx_mean = None
+        self.vxx_std = None
     
     def fetch_data(self, timeframe=TimeFrame.Minute):
         if not os.path.exists(f"{self.db_base_path}/{self.ticker}_{timeframe}_data.db"):
@@ -28,32 +35,44 @@ class StockPredictor:
         # print(stock_df)
         return stock_df
     
-    def get_vix_data(self, timeframe=TimeFrame.Minute):
+    def get_vxx_data(self, timeframe=TimeFrame.Minute):
         query = f"""
-        SELECT timestamp, close as vix
+        SELECT timestamp, close as vxx
         FROM ticker_data
         ORDER BY timestamp DESC
         """
-        conn = duckdb.connect(f"{self.db_base_path}/VIX_{timeframe}_data.db")
+        conn = duckdb.connect(f"{self.db_base_path}/VXX_{timeframe}_data.db")
         df = conn.sql(query).fetchdf()
         conn.close()
-        print(df)
         return df
     
     def train_markov_chain(self, data):
-        # Fetch and preprocess VIX data
-        vix_data = self.get_vix_data()
+        # Fetch and preprocess vxx data
+        vxx_data = self.get_vxx_data()
         data['timestamp'] = pd.to_datetime(data['timestamp'])
-        vix_data['timestamp'] = pd.to_datetime(vix_data['timestamp'])
-        data = pd.merge(data, vix_data, on='timestamp', how='outer').sort_values(by='timestamp')
+        vxx_data['timestamp'] = pd.to_datetime(vxx_data['timestamp'])
+        data = pd.merge(data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         data.interpolate(method='linear', inplace=True)
         data.dropna(inplace=True)
 
         if data.empty:
             raise ValueError("Data is empty after merging and interpolation.")
 
-        # Extract states
-        states = data[['close', 'volume', 'vix']].values
+        # Compute and store mean and std for normalization
+        self.close_mean = data['close'].mean()
+        self.close_std = data['close'].std()
+        self.volume_mean = data['volume'].mean()
+        self.volume_std = data['volume'].std()
+        self.vxx_mean = data['vxx'].mean()
+        self.vxx_std = data['vxx'].std()
+
+        # Normalize features
+        data['close_norm'] = (data['close'] - self.close_mean) / self.close_std
+        data['volume_norm'] = (data['volume'] - self.volume_mean) / self.volume_std
+        data['vxx_norm'] = (data['vxx'] - self.vxx_mean) / self.vxx_std
+
+        # Extract normalized states
+        states = data[['close_norm', 'volume_norm', 'vxx_norm']].values
 
         if states.size == 0:
             raise ValueError("No valid states found after processing the data.")
@@ -72,25 +91,52 @@ class StockPredictor:
         self.transition_matrix = transition_matrix
         self.unique_states = unique_states
         self.states = states
-        print(f"Training complete. States: {len(states)}, Unique states: {len(unique_states)}")
+        logging.info(f"Training complete. States: {len(states)}, Unique states: {len(unique_states)}")
+
 
     def predict(self, n_steps=5):
-        predictions = []
+        """
+        Predict the next `n_steps` states using the Markov chain model.
+
+        Args:
+            n_steps (int): The number of predictions to generate.
+
+        Returns:
+            dict: Predictions containing 'close', 'volume', and 'vxx' for the next `n_steps`.
+        """
+        if self.states is None or self.transition_matrix is None:
+            raise ValueError("Model is not trained. Call `train_markov_chain` first.")
+
+        predictions = {'close': [], 'volume': [], 'vxx': []}
+
         current_state = self.states[-1]
-        state_index = np.where((self.unique_states == current_state).all(axis=1))[0][0]
-        
+        state_index = np.where((self.unique_states == current_state).all(axis=1))[0]
+        if len(state_index) == 0:
+            raise ValueError("Current state not found in unique states.")
+        state_index = state_index[0]
+
         for _ in range(n_steps):
-            next_state_index = np.random.choice(range(len(self.unique_states)), p=self.transition_matrix[state_index])
+            next_state_index = np.random.choice(
+                range(len(self.unique_states)),
+                p=self.transition_matrix[state_index]
+            )
             next_state = self.unique_states[next_state_index]
-            predictions.append(next_state)
+
+            # Append the predictions for each state component
+            predictions['close'].append(next_state[0] * self.close_std + self.close_mean)
+            predictions['volume'].append(next_state[1] * self.volume_std + self.volume_mean)
+            predictions['vxx'].append(next_state[2] * self.vxx_std + self.vxx_mean)
+
             state_index = next_state_index
-        
+
         return predictions
+
+
 
 # Example usage:
 # predictor = StockPredictor('AAPL', '/path/to/your/duckdb/file')
 # historical_data = predictor.fetch_data()
 # predictor.train_markov_chain(historical_data)
-# current_state = historical_data[['close', 'volume', 'vix']].values[-1]
+# current_state = historical_data[['close', 'volume', 'vxx']].values[-1]
 # predictions = predictor.predict(current_state)
 # print(predictions)
