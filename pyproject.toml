@@ -19,6 +19,7 @@ fastapi = {extras = ["standard"], version = "^0.115.6"}
 backtesting = "^0.3.3"
 uvicorn = {extras = ["standard"], version = "^0.34.0"}
 yfinance = "^0.2.51"
+hmmlearn = "^0.3.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
