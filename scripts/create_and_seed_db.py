@@ -51,7 +51,7 @@ for ticker in tickers:
         conn.sql(f"CREATE TABLE IF NOT EXISTS ticker_data (timestamp TIMESTAMP, ticker TEXT, open FLOAT, high FLOAT, low FLOAT, close FLOAT, volume FLOAT, vwap FLOAT, PRIMARY KEY (timestamp, ticker))")
         conn.close()
         print("Database created for", ticker)
-    get_data_for_tickers.append(ticker)
+        get_data_for_tickers.append(ticker)
 
 
 # create trades table

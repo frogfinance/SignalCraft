@@ -6,7 +6,7 @@ import logging
 
 from tests import utils
 from tests.mock_alpaca_broker import MockAlpacaBroker
-from tests.predictive_model import StockPredictor
+from tests.predictive_model import StockPredictor, HMMStockPredictor
 
 import random
 from datetime import timedelta
@@ -66,7 +66,7 @@ def map_to_candle_data(data, ticker, start_time):
 def generate_candle_series(tickers):
     """Generate a series of mock candles using the StockPredictor model."""
     logging.info('Generating mock candle series for tickers: {}'.format(tickers))
-    models = [StockPredictor(ticker, "tests/data") for ticker in tickers]
+    models = [HMMStockPredictor(ticker, "tests/data") for ticker in tickers]
     candles = dict()
     for model in models:
         data = model.fetch_data()

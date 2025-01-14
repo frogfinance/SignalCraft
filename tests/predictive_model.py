@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 from alpaca.data import TimeFrame
 import logging
+from hmmlearn.hmm import GaussianHMM 
 
 class StockPredictor:
     def __init__(self, ticker, db_base_path='tests/data'):
@@ -140,3 +141,66 @@ class StockPredictor:
 # current_state = historical_data[['close', 'volume', 'vxx']].values[-1]
 # predictions = predictor.predict(current_state)
 # print(predictions)
+
+class HMMStockPredictor:
+    def __init__(self, ticker, db_base_path='tests/data', n_states=3):
+        self.ticker = ticker
+        self.db_base_path = db_base_path
+        self.n_states = n_states
+        self.model = None
+        self.scaler = None
+
+    def fetch_data(self, timeframe=TimeFrame.Minute):
+        if not os.path.exists(f"{self.db_base_path}/{self.ticker}_{timeframe}_data.db"):
+            raise FileNotFoundError(f"Database file for {self.ticker} not found at {self.db_base_path}/{self.ticker}_{timeframe}_data.db")
+
+        stock_query = f"""
+        SELECT timestamp, close, volume
+        FROM ticker_data
+        ORDER BY timestamp DESC
+        """
+        
+        stock_conn = duckdb.connect(f"{self.db_base_path}/{self.ticker}_{timeframe}_data.db")
+        stock_df = stock_conn.sql(stock_query).fetchdf()
+        stock_conn.close()
+        # print(stock_df)
+        return stock_df
+
+    def train_model(self, data):
+        """
+        Train an HMM on the historical data.
+        """
+        # Features: Close price difference, log volume
+        data['close_diff'] = data['close'].diff().fillna(0)
+        features = data[['close_diff', 'volume']].values
+
+        # Train HMM
+        self.model = GaussianHMM(n_components=self.n_states, covariance_type="diag", n_iter=100)
+        self.model.fit(features)
+
+    def predict(self, current_state, n_steps=5):
+        """
+        Predict the next n_steps using the trained HMM.
+        """
+        if self.model is None:
+            raise ValueError("HMM model is not trained. Call `train_model` first.")
+
+        predictions = []
+        state_sequence = self.model.predict(current_state.reshape(1, -1))
+        
+        for _ in range(n_steps):
+            next_state = np.random.choice(
+                range(self.n_states), 
+                p=self.model.transmat_[state_sequence[-1]]
+            )
+            next_observation = self.model.sample()[0]
+            state_sequence = np.append(state_sequence, next_state)
+            predictions.append(next_observation)
+
+        # Reverse feature engineering: Derive close price from differences
+        predicted_data = {
+            'close': [current_state[0] + obs[0] for obs in predictions],
+            'volume': [obs[1] * 1e6 for obs in predictions],
+        }
+        return predicted_data
+
