@@ -14,19 +14,20 @@ class MarkovPredictionStrategy(BaseStrategy):
         # self.signal_strategy = SignalStrategy()
 
     def discretize_features(self, data, n_bins=10):
-        for col in ['close', 'volume', 'vwap', 'vix']:
+        for col in ['close', 'volume', 'vwap', 'vxx']:
             data[col] = pd.qcut(data[col], q=n_bins, labels=False, duplicates="drop")
         return data
     
-    def fetch_vix_data(self, timeframe=TimeFrame.Minute):
+    def fetch_vxx_data(self, timeframe=TimeFrame.Minute):
         query = """
-        SELECT timestamp, close as vix
+        SELECT timestamp, close as vxx
         FROM ticker_data
         ORDER BY timestamp DESC
         """
-        conn = duckdb.connect(f"{self.db_base_path}/VIX_1Day_data.db")
+        conn = duckdb.connect(f"{self.db_base_path}/VXX_1Min_data.db")
         df = conn.sql(query).fetchdf()
         conn.close()
+
         return df
 
     def generate_next_price(self, ticker_data):
@@ -51,8 +52,8 @@ class MarkovPredictionStrategy(BaseStrategy):
 
     def make_prediction(self, ticker_data, interval="15T"):
         
-        vix_data = self.fetch_vix_data()
-        ticker_data = pd.merge(ticker_data, vix_data, on='timestamp', how='outer').sort_values(by='timestamp')
+        vxx_data = self.fetch_vxx_data()
+        ticker_data = pd.merge(ticker_data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
 
@@ -60,7 +61,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         ticker_data = self.resample_data(ticker_data, interval=interval)
         
         self.train_markov_chain(ticker_data)
-        current_state = ticker_data[['close', 'volume', 'vwap', 'vix']].values[-1]
+        current_state = ticker_data[['close', 'volume', 'vwap', 'vxx']].values[-1]
         predicted_state = self.predict_next_state(current_state)
         
         current_close = current_state[0]
@@ -94,7 +95,7 @@ class MarkovPredictionStrategy(BaseStrategy):
 
     def train_markov_chain(self, data):
         data = self.discretize_features(data)
-        states = data[['close', 'volume', 'vwap', 'vix']].values
+        states = data[['close', 'volume', 'vwap', 'vxx']].values
         unique_states, indices = np.unique(states, axis=0, return_inverse=True)
         n_states = len(unique_states)
         transition_matrix = np.zeros((n_states, n_states))
