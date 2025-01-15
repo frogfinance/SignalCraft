@@ -13,8 +13,6 @@ from app.database import save_market_data
 USE_PAPER = os.getenv('USE_PAPER', '1') == '1'
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY_PAPER' if USE_PAPER else 'ALPACA_API_KEY')
 ALPACA_API_SECRET = os.getenv('ALPACA_SECRET_KEY_PAPER' if USE_PAPER else 'ALPACA_SECRET_KEY')
-timeframe = TimeFrame.Minute
-
 
 tickers = []
 with open('tickers.txt', 'r') as f:
@@ -22,39 +20,95 @@ with open('tickers.txt', 'r') as f:
     tickers = [t.strip() for t in tickers if t]
 
 
-async def run_algo_trader():
+class TradingSystem:
     """
-    Main function to run the algorithmic trading strategy.
-    
-    The main steps are:
-    1. Fetch market data periodically and save to the database.
-    2. Generate signals from the strategy.
-    3. Execute trades based on the signals.
+    This class represents the main trading system that runs the algorithmic trading strategy.
+    The timeframe is set to minute by default, and the backtest_mode flag is set to False by default.
+    1-Min timeframes are used to fetch market data and generate signals.
+    The Strategy Handlers starts off all registered strategies in the class.
+    Each strategy has a timeframe that it operates on.
     """
-    
-    execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
-    is_market_open = execution_handler.is_market_open()
-    if not is_market_open:
-        logging.info("Market is closed. Skipping data fetch.")
-        next_open = execution_handler.get_next_market_open()
-        sleep_time = (next_open - datetime.now()).total_seconds()
-        await asyncio.sleep(sleep_time)
+    def __init__(self, timeframe=TimeFrame.Minute, backtest_mode=False):
+        self.strategy_handler = None
+        self.data_handler = None
+        self.execution_handler = None
+        self.timeframe = timeframe
+        self.backtest_mode = backtest_mode
+        self.trade_results = []  # Store results of backtested trades
+        self.backtest_name = ''
 
-    strategy_handler = StrategyHandler(tickers)
-    logging.info("Starting market data fetch...")
-    data_handler = DataHandler()
+    async def run(self):
+        if self.backtest_mode:
+            await self.run_backtest()
+        else:
+            await self.run_algo_trader()
 
-    while True:
-        data = data_handler.fetch_data(tickers)
-        tickers = data.keys()
+    async def run_backtest(self):
+        logging.info("Starting backtest mode...")
+        historical_data = self.data_handler.get_historical_data()
+
+        for ticker, data in historical_data.items():
+            for i in range(len(data) - 1):
+                current_data = data.iloc[:i+1]
+                signal = self.strategy_handler.generate_signals(historical_data={ticker: current_data})
+
+                if signal['buy'] or signal['sell']:
+                    outcome = self.execute_backtest_trade(signal, current_data)
+                    self.trade_results.append(outcome)
+
+    def execute_backtest_trade(self, signal, current_data):
+        """Simulate trade execution and determine outcome."""
+        if signal['buy']:
+            entry_price = current_data['close'].iloc[-1]
+            future_price = current_data['close'].iloc[-1] + 5  # Simulated profit for this example
+            success = future_price > entry_price + 2  # Example take-profit level
+        elif signal['sell']:
+            entry_price = current_data['close'].iloc[-1]
+            future_price = current_data['close'].iloc[-1] - 5  # Simulated loss for this example
+            success = future_price < entry_price - 2  # Example stop-loss level
+
+        return {
+            'signal': signal,
+            'entry_price': entry_price,
+            'future_price': future_price,
+            'success': success
+        }
+
+    async def run_algo_trader(self):
+        """
+        Main function to run the algorithmic trading strategy.
         
-        save_market_data(data, db_base_path=data_handler.db_base_path)  # Save to database
-        logging.info("Market data saved successfully.")
+        The main steps are:
+        1. Fetch market data periodically and save to the database.
+        2. Generate signals from the strategy.
+        3. Execute trades based on the signals.
+        """
+        logging.info("Starting live trading mode...")
+        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
+        self.data_handler = DataHandler()
 
-        # generate signals from strategy
-        signal_data = strategy_handler.generate_signals()  # Generate signals from strategy
+        is_market_open = self.execution_handler.is_market_open()
+        
+        if not is_market_open:
+            logging.info("Market is closed. Skipping data fetch.")
+            next_open = self.execution_handler.get_next_market_open()
+            sleep_time = (next_open - datetime.now()).total_seconds()
+            data = self.data_handler.fetch_data(use_most_recent=True)
+            save_market_data(data, db_base_path=self.data_handler.db_base_path)  # Save to database
+            await asyncio.sleep(sleep_time)
 
-        execution_handler.handle_execution(signal_data)  # Execute trades
+        self.strategy_handler = StrategyHandler(tickers)
 
-        asyncio.sleep(300)  # Sleep for 300 seconds before running again
+        while True:
+            logging.info("Running trader & fetching market data...")
+            data = self.data_handler.fetch_data(use_most_recent=True)
 
+            save_market_data(data, db_base_path=self.data_handler.db_base_path)  # Save to database
+            logging.info("Market data saved successfully.")
+
+            # generate signals from strategy
+            signal_data = self.strategy_handler.generate_signals()  # Generate signals from strategy
+
+            self.execution_handler.handle_execution(signal_data)  # Execute trades
+
+            asyncio.sleep(300)  # Sleep for 300 seconds before running again
