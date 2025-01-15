@@ -1,7 +1,7 @@
 SignalCraft - everymans trading system
 ====
 
-SignalCraft is a Python-based trading system that leverages powerful tools like `backtesting.py`, `duckdb` and the `alpaca-py` (library)['https://pypi.org/project/alpaca-py/'] 
+SignalCraft is a Python-based trading system that leverages powerful tools like `backtesting.py`, `duckdb` and the `alpaca-py` [library]('https://pypi.org/project/alpaca-py/')
 
 To interact with the Alpaca API. To use this project an alpaca API and SECRET key will need to be obtained.
 
@@ -13,9 +13,9 @@ SignalCraft is intended for educational and experimentation purposes only. It do
 
 ### Getting Started
 
-SignalCraft uses (duckdb)['https://duckdb.org/'] file bases databases to keep our valuable CPU resources limited to our application and not our database. 
+SignalCraft uses [duckdb]('https://duckdb.org/') file bases databases to keep our valuable CPU resources limited to our application and not our database. 
 
-1. Install (poetry)['https://python-poetry.org/docs/#installing-with-the-official-installer']
+1. Install [poetry]('https://python-poetry.org/docs/#installing-with-the-official-installer')
 2. Install project dependencies: Run `poetry install`. 
 3. Update the `tickers.txt` file with your desired tickers.
 4. Generate the data needed for strategies: Run `poetry run python scripts/create_and_seed_db.py`
