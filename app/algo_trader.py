@@ -90,11 +90,11 @@ class TradingSystem:
         is_market_open = self.execution_handler.is_market_open()
         
         if not is_market_open:
-            logging.info("Market is closed. Skipping data fetch.")
+            logging.info("Market is closed. Fetch any missing data. Skipping signals.")
             next_open = self.execution_handler.get_next_market_open()
             sleep_time = (next_open - datetime.now()).total_seconds()
             data = self.data_handler.fetch_data(use_most_recent=True)
-            save_market_data(data, db_base_path=self.data_handler.db_base_path)  # Save to database
+            self.data_handler.save_market_data(data)  # Save to database
             await asyncio.sleep(sleep_time)
 
         self.strategy_handler = StrategyHandler(tickers)
@@ -103,7 +103,7 @@ class TradingSystem:
             logging.info("Running trader & fetching market data...")
             data = self.data_handler.fetch_data(use_most_recent=True)
 
-            save_market_data(data, db_base_path=self.data_handler.db_base_path)  # Save to database
+            self.data_handler.save_market_data(data)  # Save to database
             logging.info("Market data saved successfully.")
 
             # generate signals from strategy
