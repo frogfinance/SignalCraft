@@ -10,6 +10,18 @@ class ExecutionHandler():
         super().__init__()
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
+        self.positions = {} # {ticker: Position}
+        self.pending_closes = set()
+        self.pending_orders = []
+        
+        # Position sizing parameters
+        self.max_position_size = 0.08  # 8% max per position
+        self.position_step_size = 0.02  # 2% per trade for gradual building
+        self.max_total_exposure = 1.6  # 160% total exposure (80% long + 80% short)
+        
+        # Initialize current positions and pending orders
+        self.update_positions()
+        self.update_pending_orders()
 
     def execute_trade(self, signal):
         """Execute a trade only during market hours."""
