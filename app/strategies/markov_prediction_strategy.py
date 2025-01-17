@@ -1,3 +1,4 @@
+from app.models.signal import Signal
 from app.strategies.base import BaseStrategy
 import numpy as np
 import pandas as pd
@@ -11,6 +12,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         self.transition_matrix = None
         self.unique_states = None
         self.db_base_path = db_base_path
+        self.name = 'markov'
         # self.signal_strategy = SignalStrategy()
 
     def discretize_features(self, data, n_bins=10):
@@ -39,15 +41,20 @@ class MarkovPredictionStrategy(BaseStrategy):
         # if this current ticker_data is not a 15m interval, skip signal generation
         timestamp = ticker_data['timestamp'].iloc[-1]
         if timestamp.minute % 15 != 0:
-            return {'buy': False, 'sell': False}
+            # TODO check for short term signals
+            return {'action': None}
         
         current_close, predicted_close = self.make_prediction(ticker_data)
         
+        signal = Signal(strategy=self.name)
+
         if predicted_close > current_close * 1.01:
-            return {'buy': True, 'sell': False, 'reason': 'predicted_close > current_close * 1.01', 'strategy': 'markov'}
+            signal.action = 'buy'
+            signal.reason = 'predicted_close > current_close * 1.01'
         elif predicted_close < current_close * 0.99:
-            return {'buy': False, 'sell': True, "reason": 'predicted_close < current_close * 0.99', 'strategy': 'markov'}
-        return {'buy': False, 'sell': False, 'reason': 'no signal', 'strategy': 'markov'}
+            signal.action = 'sell'
+            signal.reason = 'predicted_close < current_close * 0.99'
+        return signal
 
 
     def make_prediction(self, ticker_data, interval="15T"):
