@@ -6,7 +6,6 @@ from alpaca.data import TimeFrame
 from app.handlers.data_handler import DataHandler
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.strategy_handler import StrategyHandler
-from app.database import save_market_data
 
 
 # api-key and secret-key are the Alpaca API
@@ -52,27 +51,10 @@ class TradingSystem:
                 current_data = data.iloc[:i+1]
                 signal = self.strategy_handler.generate_signals(historical_data={ticker: current_data})
 
-                if signal['buy'] or signal['sell']:
-                    outcome = self.execute_backtest_trade(signal, current_data)
+                if signal['action'] in ['buy', 'sell']:
+                    # self.execution_handler.handle_execution(signal, backtest=True)
+                    outcome = self.executions_handler.execute_backtest_trade(signal, current_data)
                     self.trade_results.append(outcome)
-
-    def execute_backtest_trade(self, signal, current_data):
-        """Simulate trade execution and determine outcome."""
-        if signal['buy']:
-            entry_price = current_data['close'].iloc[-1]
-            future_price = current_data['close'].iloc[-1] + 5  # Simulated profit for this example
-            success = future_price > entry_price + 2  # Example take-profit level
-        elif signal['sell']:
-            entry_price = current_data['close'].iloc[-1]
-            future_price = current_data['close'].iloc[-1] - 5  # Simulated loss for this example
-            success = future_price < entry_price - 2  # Example stop-loss level
-
-        return {
-            'signal': signal,
-            'entry_price': entry_price,
-            'future_price': future_price,
-            'success': success
-        }
 
     async def run_algo_trader(self):
         """
