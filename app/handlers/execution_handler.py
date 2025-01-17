@@ -1,19 +1,24 @@
 import duckdb
 import logging
-from alpaca.trading.client import TradingClient
+from alpaca.trading.client import TradingClient, GetOrdersRequest
+from alpaca.trading.enums import QueryOrderStatus
 from alpaca.trading.requests import OrderRequest
 from alpaca.trading.enums import OrderSide
 from alpaca.trading.models import Clock, Order
+from pandas import DataFrame
+
+from app.models.position_manager import PositionManager
+from app.models.signal import Signal
 
 class ExecutionHandler():
     def __init__(self, api_key, api_secret, db_base_path="dbs", use_paper=True):
         super().__init__()
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
-        self.positions = {} # {ticker: Position}
+        self.position_manager = PositionManager(self.trading_client)
         self.pending_closes = set()
         self.pending_orders = []
-        
+
         # Position sizing parameters
         self.max_position_size = 0.08  # 8% max per position
         self.position_step_size = 0.02  # 2% per trade for gradual building
@@ -22,9 +27,11 @@ class ExecutionHandler():
         # Initialize current positions and pending orders
         self.update_positions()
         self.update_pending_orders()
-
-    def execute_trade(self, signal):
+    
+    def execute_trade(self, signal, backtest=False):
         """Execute a trade only during market hours."""
+        if backtest:
+            self.run_backtest_trade(signal)
         if not self.is_market_open():
             logging.info(f"Market is closed. Cannot execute trade for {signal['ticker']}.")
             return
@@ -102,14 +109,44 @@ class ExecutionHandler():
         clock: Clock = self.trading_client.get_clock()
         return clock.next_open
 
-    def handle_execution(self, signal_data: dict):
+    def handle_execution(self, signal_data: dict, backtest=False):
+        if backtest:
+            self.run_backtest_trade(signal_data)
         for signal in signal_data.values():
-            self.execute_trade(signal)
+            # Show initial portfolio status
+            self.position_manager.update_positions(show_status=True)
+            self.execute_trade(signal, backtest)
 
     def is_market_open(self):
         """Check if the market is currently open."""
         clock: Clock = self.trading_client.get_clock()
         return clock.is_open
+    
+    def manage_existing_positions(self, analyzer):
+        """Manage existing positions"""
+        current_positions = self.position_manager.update_positions()
+        if not current_positions:
+            return
+            
+        # Check each position
+        for symbol in list(current_positions.keys()):
+            position = current_positions[symbol]
+            side = OrderSide.BUY if float(position.qty) > 0 else OrderSide.SELL
+            technical_data = analyzer.analyze_stock(symbol, side)
+            
+            if technical_data and self.should_exit_position(symbol, technical_data):
+                print(f"\nSELL {symbol}: {', '.join(technical_data['exit_signals'])}")
+                self.position_manager.close_position(symbol)
+
+    def run_backtest_trade(signal):
+        """Simulate trade execution and determine outcome."""
+        order = dict()
+        if signal['action'] == 'buy':
+            order['side'] = OrderSide.BUY
+        elif signal['action'] == 'sell':
+            order['side'] = OrderSide.SELL
+        order['symbol'] = signal['ticker']
+        return order
     
     def save_trade(self, signal, order: Order, trade_timestamp):
         conn = duckdb.connect(f"{self.db_base_path}/trades.db")
@@ -118,3 +155,13 @@ class ExecutionHandler():
 
     def submit_order(self, order_request: OrderRequest):
         return self.trading_client.submit_order(order_request)
+    
+    def update_positions(self):
+        self.positions = {position.symbol: position for position in self.get_all_positions()}
+
+    def update_pending_orders(self):
+        order_request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
+
+        order = self.trading_client.get_orders(order_request)
+        self.pending_orders = order
+

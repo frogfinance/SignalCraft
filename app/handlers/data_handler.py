@@ -23,12 +23,13 @@ class DataHandler():
         get_data_for_tickers = self.tickers
         
         try:
-            connection = duckdb.connect(f"{self.db_base_path}/{get_data_for_tickers[0]}_{self.timeframe}_data.db")
             if use_most_recent:
+                connection = duckdb.connect(f"{self.db_base_path}/{get_data_for_tickers[0]}_{self.timeframe}_data.db")
                 # get most recent candle from the db
                 most_recent_candle_data = connection.sql(
                     f"SELECT * FROM ticker_data ORDER BY timestamp DESC LIMIT 1"
                 )
+                connection.close()
                 start = most_recent_candle_data["timestamp"].iloc[0] if not most_recent_candle_data.empty else start
             
             request = StockBarsRequest(
@@ -46,59 +47,27 @@ class DataHandler():
         except Exception as e:
             logging.error(f"Error fetching market data: {e}")
             return None
-
-
-    def fetch_vix_data(self, start=None, end=None, days=1, use_most_recent=False):
-        end = datetime.now() if end is None else end
-        start = end - timedelta(days=days) if start is None else start
-        
-        curr_date = end - timedelta(days=1)
-        data = []
-        while curr_date > start:
-            try:
-                connection = duckdb.connect(f"{self.db_base_path}/VIX_{self.timeframe}_data.db")
-                if use_most_recent:
-                    # get most recent candle from the db
-                    most_recent_candle_data = connection.sql(
-                        f"SELECT * FROM ticker_data ORDER BY timestamp DESC LIMIT 1"
-                    )
-                    start = most_recent_candle_data["timestamp"].iloc[0] if not most_recent_candle_data.empty else start
-                
-                # use yfinance to get VIX daily data
-                vix_ticker = yf.Ticker("^VIX")
-
-                # Use the history method to fetch the data
-                vix_data = vix_ticker.history(start=start.strftime('%Y-%m-%d'), end=end.strftime('%Y-%m-%d'), interval='1d')
-
-                # Resetting the index to have Date as a column
-                vix_data.reset_index(inplace=True)
-
-                # Selecting columns and converting column names to lowercase
-                vix_data = vix_data[['Date', 'Open', 'High', 'Low', 'Close', 'Volume']].copy()
-                for index, row in vix_data.iterrows():
-                    vwap = (row['Open'] + row['High'] + row['Low'] + row['Close']) / 4
-                    row_data = dict(
-                        timestamp=row['Date'],
-                        ticker='VIX',
-                        open=row['Open'],
-                        high=row['High'],
-                        low=row['Low'],
-                        close=row['Close'],
-                        volume=row['Volume'],
-                        vwap=vwap
-                    )
-                    logging.info(f"VIX data: {row_data}")
-                    connection.execute(
-                        "INSERT OR ignore INTO ticker_data (timestamp, ticker, open, high, low, close, volume, vwap) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (row['Date'], 'VIX', row['Open'], row['High'], row['Low'], row['Close'], row['Volume'], vwap)
-                    )
-                    data.append(row_data)
-                logging.info("VIX data saved for {} -> {}", curr_date.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-            except Exception as e:
-                logging.error(f"Error fetching market data: {e}")
-                return None
-            
-            end = curr_date
-            curr_date = curr_date - timedelta(days=1)
-            time.sleep(0.5)
+    
+    def get_historical_data(self):
+        data = dict()
+        for ticker in self.tickers:
+            conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+            ticker_data = conn.sql(f"SELECT * FROM ticker_data order by timestamp ASC").df()
+            conn.close()
+            data[ticker] = ticker_data
         return data
+
+    def save_market_data(self, data: dict):
+        for ticker in data.keys():
+            ticker_data = data.get(ticker, [])
+            for row in ticker_data:
+                row_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
+                self.save_to_db(ticker, row_str, db_base_path=self.db_base_path, timeframe=self.timeframe)
+            
+            logging.info('Data saved for ticker', ticker)
+
+    def save_to_db(self, ticker, data):
+        db_path = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"
+        conn = duckdb.connect(db_path)
+        conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {data}")
+        conn.close()
