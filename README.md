@@ -33,3 +33,4 @@ To add a new strategy you should extend the `backtesing.py` Strategy class.
 
 This test suite provides a predictive model using Markov chains to "predict" the next candle for a stock and apply your strategy to randomized data.
 
+### Backtesing
