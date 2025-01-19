@@ -1,3 +1,4 @@
+from app.models.signal import Signal
 from app.strategies.base import BaseStrategy
 import pandas as pd
 import numpy as np
@@ -7,8 +8,8 @@ from alpaca.data import TimeFrame
 class MarketProfileStrategy(BaseStrategy):
     def __init__(self, timeframe: TimeFrame.Hour):
         super().__init__()
-        self.high_rsi_threshold = 70
-        self.low_rsi_threshold = 30
+        self.high_rsi_threshold = 64
+        self.low_rsi_threshold = 37
         self.timeframe = timeframe
 
     def calculate_rsi(self, data: pd.DataFrame, period: int = 14) -> pd.Series:
@@ -40,35 +41,48 @@ class MarketProfileStrategy(BaseStrategy):
 
     def generate_signal(self, ticker_data: pd.DataFrame) -> Dict[str, bool]:
         """Generate buy/sell signals based on market profile and technical indicators."""
-        # Ensure the data has the required fields
-        if not {'close', 'volume', 'high', 'low', 'open', 'vwap' }.issubset(ticker_data.columns):
-            raise ValueError("Input data must contain 'close', 'volume', 'high', 'low', 'open', and 'vwap' columns.")
+        signal = Signal(strategy='market_profile')
+
+        # Ensure there are enough 1-minute candles for aggregation
+        required_candles = 60  # For 1-hour aggregation
+        if ticker_data.shape[0] < required_candles:
+            return signal
+
+        # Resample data to the required timeframe (e.g., 1 hour)
+        ticker_data['timestamp'] = pd.to_datetime(ticker_data['timestamp'])
+        ticker_data.set_index('timestamp', inplace=True)
+        aggregated_data = ticker_data.resample(self.timeframe.value).agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum',
+        }).dropna()
+
+        # Add VWAP to the aggregated data
+        aggregated_data['vwap'] = self.calculate_vwap(aggregated_data)
+
+        # Check if there are enough aggregated intervals for analysis
+        if aggregated_data.shape[0] < 90:  # Minimum 90 intervals for reliable signal generation
+            return signal
 
         # Add technical indicators
-        ticker_data['rsi'] = self.calculate_rsi(ticker_data)
-        macd_data = self.calculate_macd(ticker_data)
-        ticker_data['macd'] = macd_data['macd']
-        ticker_data['signal_line'] = macd_data['signal']
+        aggregated_data['rsi'] = self.calculate_rsi(aggregated_data)
+        macd_data = self.calculate_macd(aggregated_data)
+        aggregated_data['macd'] = macd_data['macd']
+        aggregated_data['signal_line'] = macd_data['signal']
 
         # Get the most recent row for signal calculation
-        latest_row = ticker_data.iloc[-1]
-
-        # Example logic for buy/sell signals
-        signal = {
-            'buy': False,
-            'sell': False,
-            'reason': ''
-        }
+        latest_row = aggregated_data.iloc[-1]
 
         # Conditions for a buy signal
         if latest_row['rsi'] < self.low_rsi_threshold and latest_row['close'] > latest_row['vwap'] and latest_row['macd'] > latest_row['signal_line']:
-            signal['buy'] = True
-            signal['reason'] = f'Oversold (RSI < {self.low_rsi_threshold}), price above VWAP, and MACD bullish crossover.'
+            signal.buy()
+            signal.reason = f'Oversold (RSI < {self.low_rsi_threshold}), price above VWAP, and MACD bullish crossover.'
 
         # Conditions for a sell signal
         if latest_row['rsi'] > self.high_rsi_threshold and latest_row['close'] < latest_row['vwap'] and latest_row['macd'] < latest_row['signal_line']:
-            signal['sell'] = True
-            signal['reason'] = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
+            signal.sell()
+            signal.reason = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
 
         return signal
-s

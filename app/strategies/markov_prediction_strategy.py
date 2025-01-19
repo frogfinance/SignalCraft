@@ -1,3 +1,4 @@
+from datetime import datetime
 from app.models.signal import Signal
 from app.strategies.base import BaseStrategy
 import numpy as np
@@ -19,61 +20,76 @@ class MarkovPredictionStrategy(BaseStrategy):
         for col in ['close', 'volume', 'vwap', 'vxx']:
             data[col] = pd.qcut(data[col], q=n_bins, labels=False, duplicates="drop")
         return data
-    
-    def fetch_vxx_data(self, timeframe=TimeFrame.Minute):
-        query = """
-        SELECT timestamp, close as vxx
-        FROM ticker_data
-        ORDER BY timestamp DESC
-        """
-        conn = duckdb.connect(f"{self.db_base_path}/VXX_1Min_data.db")
-        df = conn.sql(query).fetchdf()
-        conn.close()
-
-        return df
-
-    def generate_next_price(self, ticker_data):
-        current_close, predicted_close = self.make_prediction(ticker_data, interval="1D")
-        return predicted_close
 
     def generate_signal(self, ticker_data):
-        # based on 15m intervals
-        # if this current ticker_data is not a 15m interval, skip signal generation
-        timestamp = ticker_data['timestamp'].iloc[-1]
-        if timestamp.minute % 15 != 0:
-            # TODO check for short term signals
-            return {'action': None}
-        
-        current_close, predicted_close = self.make_prediction(ticker_data)
-        
+        """
+        Generate buy or sell signals based on the Markov prediction model.
+        """
         signal = Signal(strategy=self.name)
+        # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
+        timestamp = ticker_data['timestamp'].iloc[-1]
+        if timestamp.minute % 15 != 0 or ticker_data.shape[0] < 15:
+            return signal
+
+        current_close, predicted_close = self.make_prediction(ticker_data)
 
         if predicted_close > current_close * 1.01:
-            signal.action = 'buy'
-            signal.reason = 'predicted_close > current_close * 1.01'
+            signal.buy()
+            signal.reason = 'Predicted close is significantly higher than current close'
         elif predicted_close < current_close * 0.99:
-            signal.action = 'sell'
-            signal.reason = 'predicted_close < current_close * 0.99'
+            signal.sell()
+            signal.reason = 'Predicted close is significantly lower than current close'
+
         return signal
 
-
-    def make_prediction(self, ticker_data, interval="15T"):
+    def make_prediction(self, ticker_data, interval="15T", n_simulations=5000):
+        """
+        Predict the next close price using Markov chain simulations.
         
+        Args:
+            ticker_data: DataFrame containing ticker data.
+            interval: Resampling interval (e.g., "15T" for 15 minutes).
+            n_simulations: Number of simulations to run.
+        
+        Returns:
+            current_close: The current close price.
+            predicted_close: The most commonly predicted close price.
+        """
+        # Fetch and preprocess VXX data
         vxx_data = self.fetch_vxx_data()
         ticker_data = pd.merge(ticker_data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
 
-        # Resample data into 15-minute intervals
+        # Resample data
         ticker_data = self.resample_data(ticker_data, interval=interval)
         
+        # Train Markov chain
         self.train_markov_chain(ticker_data)
-        current_state = ticker_data[['close', 'volume', 'vwap', 'vxx']].values[-1]
-        predicted_state = self.predict_next_state(current_state)
         
+        # Get the current state
+        current_state = ticker_data[['close', 'volume', 'vwap', 'vxx']].values[-1]
+        
+        # Simulate future states
+        predictions = []
+        for _ in range(n_simulations):
+            state_index = np.where((self.unique_states == current_state).all(axis=1))[0]
+            if len(state_index) == 0:
+                raise ValueError("Current state not found in unique states.")
+            state_index = state_index[0]
+
+            # Predict the next state
+            next_state_index = np.random.choice(
+                range(len(self.unique_states)),
+                p=self.transition_matrix[state_index]
+            )
+            predictions.append(self.unique_states[next_state_index][0])  # Append the predicted close price
+
+        # Determine the most common predicted close price
+        predicted_close = np.mean(predictions)  # Alternatively, use np.median or mode
         current_close = current_state[0]
-        predicted_close = predicted_state[0]
         return current_close, predicted_close
+
 
     def predict_next_state(self, current_state, n_steps=1):
         state_index = np.where((self.unique_states == current_state).all(axis=1))[0][0]
