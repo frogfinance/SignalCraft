@@ -1,7 +1,5 @@
 import logging
 import duckdb
-import time
-import yfinance as yf
 from datetime import datetime, timedelta
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data import StockBarsRequest
@@ -24,6 +22,7 @@ class DataHandler():
         
         try:
             if use_most_recent:
+                # find the most recent candle timestart as `start``
                 connection = duckdb.connect(f"{self.db_base_path}/{get_data_for_tickers[0]}_{self.timeframe}_data.db")
                 # get most recent candle from the db
                 most_recent_candle_data = connection.sql(
