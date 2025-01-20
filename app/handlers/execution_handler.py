@@ -11,22 +11,24 @@ from app.models.position_manager import PositionManager
 from app.models.signal import Signal
 
 class ExecutionHandler():
-    def __init__(self, api_key, api_secret, db_base_path="dbs", use_paper=True):
+    def __init__(self, api_key, api_secret, db_base_path="dbs", use_paper=True, is_backtest=False):
         super().__init__()
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
-        self.position_manager = PositionManager(self.trading_client)
+        self.position_manager = PositionManager(self.trading_client, backtest=is_backtest)
         self.pending_closes = set()
         self.pending_orders = []
+        self.is_backtest = is_backtest
 
         # Position sizing parameters
         self.max_position_size = 0.08  # 8% max per position
         self.position_step_size = 0.02  # 2% per trade for gradual building
         self.max_total_exposure = 1.6  # 160% total exposure (80% long + 80% short)
         
-        # Initialize current positions and pending orders
-        self.update_positions()
-        self.update_pending_orders()
+        if self.is_backtest is False:
+            # Initialize current positions and pending orders
+            self.position_manager.update_positions()
+            self.position_manager.update_pending_orders()
     
     def execute_trade(self, signal, backtest=False):
         """Execute a trade only during market hours."""
@@ -36,7 +38,7 @@ class ExecutionHandler():
             logging.info(f"Market is closed. Cannot execute trade for {signal['ticker']}.")
             return
         
-        positions = self.get_all_positions()
+        positions = self.position_manager.positions
 
         # work on order sizing
         # TODO order sizing here
@@ -145,23 +147,14 @@ class ExecutionHandler():
             order['side'] = OrderSide.BUY
         elif signal['action'] == 'sell':
             order['side'] = OrderSide.SELL
-        order['symbol'] = signal['ticker']
+        order['symbol'] = signal.ticker
         return order
     
-    def save_trade(self, signal, order: Order, trade_timestamp):
+    def save_trade(self, signal: Signal, order: Order, trade_timestamp):
         conn = duckdb.connect(f"{self.db_base_path}/trades.db")
-        conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}, {signal['ticker']}', '{signal['action']}', {signal['qty']}, {signal['price']}, '{order.id}')")
+        conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}, {order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price}, '{order.client_order_id}')")
         conn.close()
 
     def submit_order(self, order_request: OrderRequest):
         return self.trading_client.submit_order(order_request)
     
-    def update_positions(self):
-        self.positions = {position.symbol: position for position in self.get_all_positions()}
-
-    def update_pending_orders(self):
-        order_request = GetOrdersRequest(status=QueryOrderStatus.OPEN)
-
-        order = self.trading_client.get_orders(order_request)
-        self.pending_orders = order
-
