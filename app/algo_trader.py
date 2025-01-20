@@ -2,16 +2,19 @@ import asyncio, os
 import logging
 from datetime import datetime
 from alpaca.data import TimeFrame
+import dotenv
 
 from app.handlers.data_handler import DataHandler
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.strategy_handler import StrategyHandler
 
+dotenv.load_dotenv()
 
 # api-key and secret-key are the Alpaca API
 USE_PAPER = os.getenv('USE_PAPER', '1') == '1'
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY_PAPER' if USE_PAPER else 'ALPACA_API_KEY')
 ALPACA_API_SECRET = os.getenv('ALPACA_SECRET_KEY_PAPER' if USE_PAPER else 'ALPACA_SECRET_KEY')
+BACKTEST = os.getenv('BACKTEST', '0') == '1'
 
 tickers = []
 with open('tickers.txt', 'r') as f:
@@ -27,12 +30,12 @@ class TradingSystem:
     The Strategy Handlers starts off all registered strategies in the class.
     Each strategy has a timeframe that it operates on.
     """
-    def __init__(self, timeframe=TimeFrame.Minute, backtest_mode=False):
+    def __init__(self, timeframe=TimeFrame.Minute):
         self.strategy_handler = None
         self.data_handler = None
         self.execution_handler = None
         self.timeframe = timeframe
-        self.backtest_mode = backtest_mode
+        self.backtest_mode = BACKTEST
         self.trade_results = []  # Store results of backtested trades
         self.backtest_name = ''
 
@@ -44,6 +47,8 @@ class TradingSystem:
 
     async def run_backtest(self):
         logging.info("Starting backtest mode...")
+        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
+        self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
         historical_data = self.data_handler.get_historical_data()
 
         for ticker, data in historical_data.items():
@@ -51,9 +56,9 @@ class TradingSystem:
                 current_data = data.iloc[:i+1]
                 signal = self.strategy_handler.generate_signals(historical_data={ticker: current_data})
 
-                if signal['action'] in ['buy', 'sell']:
+                if signal.action in ['buy', 'sell']:
                     # self.execution_handler.handle_execution(signal, backtest=True)
-                    outcome = self.executions_handler.execute_backtest_trade(signal, current_data)
+                    outcome = self.executions_handler.run_backtest_trade(signal)
                     self.trade_results.append(outcome)
 
     async def run_algo_trader(self):
@@ -67,7 +72,7 @@ class TradingSystem:
         """
         logging.info("Starting live trading mode...")
         self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
-        self.data_handler = DataHandler()
+        self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
 
         is_market_open = self.execution_handler.is_market_open()
         
