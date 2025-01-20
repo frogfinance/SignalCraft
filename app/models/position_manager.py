@@ -2,6 +2,7 @@ from alpaca.trading import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 from datetime import datetime
+import logging
 
 from app.models.position import Position
 
@@ -42,7 +43,7 @@ class PositionManager:
                     })
                     
         except Exception as e:
-            print(f"Error updating orders: {str(e)}")
+            logging.info(f"Error updating orders: {str(e)}")
     
     def get_account_info(self):
         """Get account information"""
@@ -97,26 +98,26 @@ class PositionManager:
                                for p in active_positions.values())
             
             if show_status:
-                print("\nCurrent Portfolio Status:")
-                print(f"Total Exposure: {total_exposure:.1%}")
+                logging.info("\nCurrent Portfolio Status:")
+                logging.info(f"Total Exposure: {total_exposure:.1%}")
                 for pos in active_positions.values():
                     exposure = pos.get_exposure(account['equity'])
-                    print(f"{pos} ({exposure:.1%} exposure)")
+                    logging.info(f"{pos} ({exposure:.1%} exposure)")
                 
                 if self.pending_closes:
-                    print("\nPending Close Orders:")
+                    logging.info("\nPending Close Orders:")
                     for symbol in self.pending_closes:
-                        print(f"- {symbol}")
+                        logging.info(f"- {symbol}")
                 
                 if self.pending_orders:
-                    print("\nPending New Orders:")
+                    logging.info("\nPending New Orders:")
                     for order in self.pending_orders:
-                        print(f"- {order['symbol']} ({order['side']})")
+                        logging.info(f"- {order['symbol']} ({order['side']})")
                 
             return self.positions
             
         except Exception as e:
-            print(f"Error updating positions: {str(e)}")
+            logging.info(f"Error updating positions: {str(e)}")
             return {}
     
     def calculate_target_position(self, symbol, price, side, target_pct=None):
@@ -139,7 +140,7 @@ class PositionManager:
         
         # Check if we're already at max exposure
         if total_exposure >= self.max_total_exposure:
-            print(f"Maximum total exposure reached: {total_exposure:.1%}")
+            logging.info(f"Maximum total exposure reached: {total_exposure:.1%}")
             return 0, False
         
         # Use provided target_pct or default max_position_size
@@ -153,12 +154,12 @@ class PositionManager:
             
             # Don't add if already at target size
             if current_exposure >= position_size:
-                print(f"Target position size reached for {symbol}: {current_exposure:.1%}")
+                logging.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
                 return 0, False
             
             # Don't add if position moving against us
             if current_position.pl_pct < -0.02:  # -2% loss threshold
-                print(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
+                logging.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
                 return 0, False
             
             # Calculate remaining size to reach target
@@ -168,7 +169,7 @@ class PositionManager:
         else:
             # New position - use full target size
             target_shares = int(target_position_value / price)
-            print(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
+            logging.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
             return target_shares, True
     
     def should_close_position(self, symbol, technical_data):
@@ -217,7 +218,7 @@ class PositionManager:
         
         if reasons:
             reason_str = ", ".join(reasons)
-            print(f"Closing {symbol} due to: {reason_str}")
+            logging.info(f"Closing {symbol} due to: {reason_str}")
             return True
             
         return False
@@ -244,15 +245,15 @@ class PositionManager:
                     'side': side,
                     'order_id': order.id
                 })
-                print(f"Order queued: {shares} shares of {symbol}")
+                logging.info(f"Order queued: {shares} shares of {symbol}")
             else:
-                print(f"Order executed: {shares} shares of {symbol}")
+                logging.info(f"Order executed: {shares} shares of {symbol}")
             
             return order
         except Exception as e:
-            print(f"\nError placing order:")
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {str(e)}")
+            logging.info(f"\nError placing order:")
+            logging.info(f"Error type: {type(e).__name__}")
+            logging.info(f"Error message: {str(e)}")
             return None
     
     def check_position_available(self, symbol):
@@ -265,22 +266,22 @@ class PositionManager:
             for pos in positions:
                 if pos.symbol == symbol:
                     if float(pos.qty_available) == 0:
-                        print(f"Skipping {symbol} - all shares held for orders")
+                        logging.info(f"Skipping {symbol} - all shares held for orders")
                         return False
                     return True
                     
-            print(f"Position not found: {symbol}")
+            logging.info(f"Position not found: {symbol}")
             return False
             
         except Exception as e:
-            print(f"Error checking position {symbol}: {str(e)}")
+            logging.info(f"Error checking position {symbol}: {str(e)}")
             return False
     
     def close_position(self, symbol):
         """Close an existing position"""
         # Skip if already pending close or shares held
         if symbol in self.pending_closes:
-            print(f"Skipping {symbol} - close order already pending")
+            logging.info(f"Skipping {symbol} - close order already pending")
             return None
         
         if not self.check_position_available(symbol):
@@ -290,11 +291,11 @@ class PositionManager:
             order = self.trading_client.close_position(symbol)
             if order.status == 'accepted':
                 self.pending_closes.add(symbol)
-                print(f"Close order queued: {symbol}")
+                logging.info(f"Close order queued: {symbol}")
                 return order
                 
         except Exception as e:
-            print(f"\nError closing position in {symbol}:")
-            print(f"Error type: {type(e).__name__}")
-            print(f"Error message: {str(e)}")
+            logging.info(f"\nError closing position in {symbol}:")
+            logging.info(f"Error type: {type(e).__name__}")
+            logging.info(f"Error message: {str(e)}")
             return None
