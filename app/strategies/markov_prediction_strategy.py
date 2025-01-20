@@ -25,7 +25,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         """
         Generate buy or sell signals based on the Markov prediction model.
         """
-        signal = Signal(strategy=self.name)
+        signal = Signal(strategy=self.name, ticker=ticker_data['ticker'].iloc[0])
         # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
         timestamp = ticker_data['timestamp'].iloc[-1]
         if timestamp.minute % 15 != 0 or ticker_data.shape[0] < 15:

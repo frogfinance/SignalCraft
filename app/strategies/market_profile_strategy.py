@@ -41,7 +41,7 @@ class MarketProfileStrategy(BaseStrategy):
 
     def generate_signal(self, ticker_data: pd.DataFrame) -> Dict[str, bool]:
         """Generate buy/sell signals based on market profile and technical indicators."""
-        signal = Signal(strategy='market_profile')
+        signal = Signal(strategy='market_profile', ticker=ticker_data['ticker'].iloc[0])
 
         # Ensure there are enough 1-minute candles for aggregation
         required_candles = 60  # For 1-hour aggregation
