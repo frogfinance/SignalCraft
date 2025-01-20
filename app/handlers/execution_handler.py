@@ -2,7 +2,7 @@ import duckdb
 import logging
 from alpaca.trading.client import TradingClient, GetOrdersRequest
 from alpaca.trading.enums import QueryOrderStatus
-from alpaca.trading.requests import OrderRequest
+from alpaca.trading.requests import LimitOrderRequest
 from alpaca.trading.enums import OrderSide
 from alpaca.trading.models import Clock, Order
 from pandas import DataFrame
@@ -16,89 +16,45 @@ class ExecutionHandler():
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
         self.position_manager = PositionManager(self.trading_client, backtest=is_backtest)
-        self.pending_closes = set()
-        self.pending_orders = []
         self.is_backtest = is_backtest
-
-        # Position sizing parameters
-        self.max_position_size = 0.08  # 8% max per position
-        self.position_step_size = 0.02  # 2% per trade for gradual building
-        self.max_total_exposure = 1.6  # 160% total exposure (80% long + 80% short)
-        
-        if self.is_backtest is False:
-            # Initialize current positions and pending orders
-            self.position_manager.update_positions()
-            self.position_manager.update_pending_orders()
     
-    def execute_trade(self, signal, backtest=False):
+    def execute_trade(self, signal: Signal, backtest=False):
         """Execute a trade only during market hours."""
         if backtest:
             self.run_backtest_trade(signal)
         if not self.is_market_open():
             logging.info(f"Market is closed. Cannot execute trade for {signal['ticker']}.")
             return
-        
-        positions = self.position_manager.positions
 
-        # work on order sizing
-        # TODO order sizing here
+        def submit_and_handle_order(order_request):
+            order = self.submit_order(order_request)
+            logging.info("Order submitted: {}".format(order))
+            if order.filled_at is None:
+                logging.info(f"Order for {signal['ticker']} is still open.")
+                trade_timestamp = order.submitted_at
+            else:
+                trade_timestamp = order.filled_at
+            self.save_trade(signal, order, trade_timestamp)
 
+        qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=0.045)
         # if sell, check if we have shares to sell
-        if signal['action'] == 'sell':
-            position_found = False
-            for position in positions:
-                if position.symbol == signal['ticker']:
-                    if position.qty < signal['qty']:
-                        signal['qty'] = position.qty
-                    position_found = True
-                    break
-            if not position_found:
-                logging.info(f"No position found for {signal['ticker']}. Cannot sell.")
-                return
-
-        # if buy, check if we have enough cash to buy and see if we have any open orders for the same ticker or positions for the same ticker
-        # if we have open orders or positions, and a buy signal do not buy
-        if signal['action'] == 'buy':
-            for position in positions:
-                if position.symbol == signal['ticker']:
-                    logging.info(f"Already have a position for {signal['ticker']}. Cannot buy.")
-                    return
-                
-            cash_on_hand = self.get_buying_power()
-            if cash_on_hand < signal['qty'] * signal['price']:
-                logging.info(f"Not enough cash to buy {signal['qty']} shares of {signal['ticker']} at {signal['price']}.")
-                return
-            
-            # check orders to see if we sold this stock on the previous signal
-
-
-        action = None
-        if signal['action'] == 'buy':
-            action = OrderSide.BUY
-        elif signal['action'] == 'sell':
-            action = OrderSide.SELL
-
-        if action:
-            try:
-                logging.info(f"Executing {action} order for {signal['ticker']}.")
-                order_request = OrderRequest(
-                    symbol=signal['ticker'],
-                    qty=signal['qty'],
-                    type='market',
-                    side=action,
-                )
-                order = self.submit_order(order_request)
-                logging.info(f"Order response: {order}")
-
-                # if successful save the information to the duckdb database
-                if order.filled_at is None:
-                    logging.info(f"Order for {signal['ticker']} is still open.")
-                    trade_timestamp = order.submitted_at
-                else:
-                    trade_timestamp = order.filled_at
-                self.save_trade(signal, order, trade_timestamp)
-            except Exception as e:
-                logging.info(f"Error executing trade: {e}")
+        if is_good_trade and signal.side in OrderSide.SELL:
+            order = LimitOrderRequest(symbol=signal.ticker, 
+                                      qty=qty, 
+                                      side=OrderSide.SELL, 
+                                      limit_price=signal.price
+                    )
+            submit_and_handle_order(order)
+       
+        elif is_good_trade and signal.side in OrderSide.BUY:   
+            order = LimitOrderRequest(symbol=signal.ticker,
+                                      qty=qty,
+                                      side=OrderSide.BUY,
+                                      limit_price=signal.price
+                                    )
+            submit_and_handle_order(order)
+        else:
+            logging.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
 
     def get_all_positions(self):
         return self.trading_client.get_all_positions()
@@ -155,6 +111,7 @@ class ExecutionHandler():
         conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}, {order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price}, '{order.client_order_id}')")
         conn.close()
 
-    def submit_order(self, order_request: OrderRequest):
+    def submit_order(self, order_request):
+        """this function exists to mock the order submission"""
         return self.trading_client.submit_order(order_request)
     
