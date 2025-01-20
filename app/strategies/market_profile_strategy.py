@@ -39,19 +39,19 @@ class MarketProfileStrategy(BaseStrategy):
         cumulative_volume = data['volume'].cumsum()
         return cumulative_price_volume / cumulative_volume
 
-    def generate_signal(self, ticker_data: pd.DataFrame) -> Dict[str, bool]:
+    def generate_signal(self, ticker, data: pd.DataFrame) -> Signal:
         """Generate buy/sell signals based on market profile and technical indicators."""
-        signal = Signal(strategy='market_profile', ticker=ticker_data['ticker'].iloc[0])
+        signal = Signal(strategy='market_profile', ticker=ticker)
 
         # Ensure there are enough 1-minute candles for aggregation
         required_candles = 60  # For 1-hour aggregation
-        if ticker_data.shape[0] < required_candles:
+        if data.shape[0] < required_candles:
             return signal
 
         # Resample data to the required timeframe (e.g., 1 hour)
-        ticker_data['timestamp'] = pd.to_datetime(ticker_data['timestamp'])
-        ticker_data.set_index('timestamp', inplace=True)
-        aggregated_data = ticker_data.resample(self.timeframe.value).agg({
+        data['timestamp'] = pd.to_datetime(data['timestamp'])
+        data.set_index('timestamp', inplace=True)
+        aggregated_data = data.resample(self.timeframe.value).agg({
             'open': 'first',
             'high': 'max',
             'low': 'min',
@@ -78,11 +78,13 @@ class MarketProfileStrategy(BaseStrategy):
         # Conditions for a buy signal
         if latest_row['rsi'] < self.low_rsi_threshold and latest_row['close'] > latest_row['vwap'] and latest_row['macd'] > latest_row['signal_line']:
             signal.buy()
+            signal.price = latest_row['close']
             signal.reason = f'Oversold (RSI < {self.low_rsi_threshold}), price above VWAP, and MACD bullish crossover.'
 
         # Conditions for a sell signal
         if latest_row['rsi'] > self.high_rsi_threshold and latest_row['close'] < latest_row['vwap'] and latest_row['macd'] < latest_row['signal_line']:
             signal.sell()
+            signal.price = latest_row['close']
             signal.reason = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
 
         return signal

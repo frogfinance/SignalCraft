@@ -31,7 +31,7 @@ class StrategyHandler():
                 ticker_data = get_ticker_data(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path)    
             connection.close()
             most_recent_ticker_datetime = ticker_data['timestamp'].max()
-            for _, strategy in self.strategies.items():
+            for strategy in self.strategies.values():
                 signal_data[ticker] = strategy.generate_signal(ticker, ticker_data)
                 signal_data['timestamp'] = most_recent_ticker_datetime
                 if signal_data['action'] in ['buy', 'sell']:

@@ -21,23 +21,25 @@ class MarkovPredictionStrategy(BaseStrategy):
             data[col] = pd.qcut(data[col], q=n_bins, labels=False, duplicates="drop")
         return data
 
-    def generate_signal(self, ticker_data):
+    def generate_signal(self, ticker, data) -> Signal:
         """
         Generate buy or sell signals based on the Markov prediction model.
         """
-        signal = Signal(strategy=self.name, ticker=ticker_data['ticker'].iloc[0])
+        signal = Signal(strategy=self.name, ticker=ticker)
         # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
-        timestamp = ticker_data['timestamp'].iloc[-1]
-        if timestamp.minute % 15 != 0 or ticker_data.shape[0] < 15:
+        timestamp = data['timestamp'].iloc[-1]
+        if timestamp.minute % 15 != 0 or data.shape[0] < 15:
             return signal
 
-        current_close, predicted_close = self.make_prediction(ticker_data)
+        current_close, predicted_close = self.make_prediction(data)
 
         if predicted_close > current_close * 1.01:
             signal.buy()
+            signal.price = current_close
             signal.reason = 'Predicted close is significantly higher than current close'
         elif predicted_close < current_close * 0.99:
             signal.sell()
+            signal.price = current_close
             signal.reason = 'Predicted close is significantly lower than current close'
 
         return signal
