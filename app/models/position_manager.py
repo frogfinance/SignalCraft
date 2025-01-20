@@ -6,11 +6,12 @@ from datetime import datetime
 from app.models.position import Position
 
 class PositionManager:
-    def __init__(self, trading_client: TradingClient):
+    def __init__(self, trading_client: TradingClient, backtest=False):
         self.trading_client = trading_client
         self.positions = {}  # symbol -> Position object
         self.pending_closes = set()  # Symbols with pending close orders
         self.pending_orders = []  # List of pending new position orders
+        self.is_backtest = backtest
         
         # Position sizing parameters
         self.max_position_size = 0.08  # 8% max per position
