@@ -49,16 +49,16 @@ class TradingSystem:
         logging.info("Starting backtest mode...")
         self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
         self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
-        historical_data = self.data_handler.get_historical_data()
+        backtest_data = self.data_handler.get_backtest_data()
 
-        for ticker, data in historical_data.items():
+        for ticker, data in backtest_data.items():
             for i in range(len(data) - 1):
-                current_data = data.iloc[:i+1]
-                signal = self.strategy_handler.generate_signals(historical_data={ticker: current_data})
+                backtest_candle_data = data.iloc[i:i+2]
+                signal = self.strategy_handler.generate_signals(historical_data=backtest_candle_data)
 
                 if signal.action in ['buy', 'sell']:
                     # self.execution_handler.handle_execution(signal, backtest=True)
-                    outcome = self.executions_handler.run_backtest_trade(signal)
+                    outcome = self.execution_handler.run_backtest_trade(signal)
                     self.trade_results.append(outcome)
 
     async def run_algo_trader(self):
