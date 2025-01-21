@@ -47,11 +47,11 @@ class DataHandler():
             logging.error(f"Error fetching market data: {e}")
             return None
     
-    def get_historical_data(self):
+    def get_backtest_data(self):
         data = dict()
         for ticker in self.tickers:
             conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
-            ticker_data = conn.sql(f"SELECT * FROM ticker_data order by timestamp ASC").df()
+            ticker_data = conn.sql(f"SELECT * FROM ticker_data where order by timestamp ASC").df()
             conn.close()
             data[ticker] = ticker_data
         return data
