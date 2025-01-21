@@ -45,21 +45,27 @@ class TradingSystem:
         else:
             await self.run_algo_trader()
 
-    async def run_backtest(self):
+    async def run_backtest(self, start_candle_index=1):
         logging.info("Starting backtest mode...")
         self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
         self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
         backtest_data = self.data_handler.get_backtest_data()
-
-        for ticker, data in backtest_data.items():
-            for i in range(len(data) - 1):
-                backtest_candle_data = data.iloc[i:i+2]
-                signal = self.strategy_handler.generate_signals(historical_data=backtest_candle_data)
-
-                if signal.action in ['buy', 'sell']:
-                    # self.execution_handler.handle_execution(signal, backtest=True)
-                    outcome = self.execution_handler.run_backtest_trade(signal)
-                    self.trade_results.append(outcome)
+        backtest_ticker_data = backtest_data[tickers[0]]
+        # the backtest start candle timestamp is the second candle in the backtest data
+        start_candle_timestamp = backtest_ticker_data['timestamp'].iloc[start_candle_index]
+        total_number_candles = len(backtest_ticker_data)
+        candle_index = start_candle_index
+        backtest_data = {'end': start_candle_timestamp}
+        # generate signals is expecting backtest_data with a key 'end' denoting the most recent timestamp
+        # get all timestamps for the backtest data ordered by eldest to youngest
+        while candle_index <= total_number_candles:
+            backtest_data['end'] = backtest_ticker_data['timestamp'].iloc[candle_index]
+            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
+            candle_index += 1
+            for signal in signal_data.values():
+                outcome = self.execution_handler.run_backtest_trade(signal)
+                self.trade_results.append(outcome)
+            
 
     async def run_algo_trader(self):
         """
