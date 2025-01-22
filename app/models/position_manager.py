@@ -172,7 +172,7 @@ class PositionManager:
             logging.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
             return target_shares, True
     
-    def should_close_position(self, symbol, technical_data):
+    def should_close_position(self, symbol, signal):
         """Determine if a position should be closed based on technical analysis"""
         position = self.positions.get(symbol)
         if not position:
@@ -190,26 +190,26 @@ class PositionManager:
         if position.pl_pct < -0.05:  # -5% stop loss
             reasons.append(f"Stop loss hit: {position.pl_pct:.1%} P&L")
         
-        # 2. Technical score moves against position
-        technical_score = technical_data['score']
-        if position.side == OrderSide.BUY and technical_score < 0.4:
-            reasons.append(f"Weak technical score for long: {technical_score:.2f}")
-        elif position.side == OrderSide.SELL and technical_score > 0.6:
-            reasons.append(f"Strong technical score for short: {technical_score:.2f}")
+        # # 2. Technical score moves against position
+        # technical_score = signal['score']
+        # if position.side == OrderSide.BUY and technical_score < 0.4:
+        #     reasons.append(f"Weak technical score for long: {technical_score:.2f}")
+        # elif position.side == OrderSide.SELL and technical_score > 0.6:
+        #     reasons.append(f"Strong technical score for short: {technical_score:.2f}")
         
-        # 3. Momentum moves against position
-        momentum = technical_data['momentum']
-        if position.side == OrderSide.BUY and momentum < -0.02:  # -2% momentum for longs
-            reasons.append(f"Negative momentum for long: {momentum:.1f}%")
-        elif position.side == OrderSide.SELL and momentum > 0.02:  # +2% momentum for shorts
-            reasons.append(f"Positive momentum for short: {momentum:.1f}%")
+        # # 3. Momentum moves against position
+        # momentum = signal['momentum']
+        # if position.side == OrderSide.BUY and momentum < -0.02:  # -2% momentum for longs
+        #     reasons.append(f"Negative momentum for long: {momentum:.1f}%")
+        # elif position.side == OrderSide.SELL and momentum > 0.02:  # +2% momentum for shorts
+        #     reasons.append(f"Positive momentum for short: {momentum:.1f}%")
         
-        # 4. Over exposure - close weakest positions
-        if total_exposure > self.max_total_exposure:
-            # Close positions with weak technicals when over-exposed
-            if (position.side == OrderSide.BUY and technical_score < 0.5) or \
-               (position.side == OrderSide.SELL and technical_score > 0.5):
-                reasons.append(f"Reducing exposure ({total_exposure:.1%} total)")
+        # # 4. Over exposure - close weakest positions
+        # if total_exposure > self.max_total_exposure:
+        #     # Close positions with weak technicals when over-exposed
+        #     if (position.side == OrderSide.BUY and technical_score < 0.5) or \
+        #        (position.side == OrderSide.SELL and technical_score > 0.5):
+        #         reasons.append(f"Reducing exposure ({total_exposure:.1%} total)")
         
         # 5. Mediocre performance with significant age
         position_age = (datetime.now() - position.entry_time).days
