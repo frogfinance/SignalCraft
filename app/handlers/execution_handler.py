@@ -1,11 +1,9 @@
 import duckdb
 import logging
-from alpaca.trading.client import TradingClient, GetOrdersRequest
-from alpaca.trading.enums import QueryOrderStatus
-from alpaca.trading.requests import LimitOrderRequest
-from alpaca.trading.enums import OrderSide
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
+from alpaca.trading.enums import OrderSide, OrderType
 from alpaca.trading.models import Clock, Order
-from pandas import DataFrame
 
 from app.models.position_manager import PositionManager
 from app.models.signal import Signal
@@ -42,6 +40,7 @@ class ExecutionHandler():
             order = LimitOrderRequest(symbol=signal.ticker, 
                                       qty=qty, 
                                       side=OrderSide.SELL, 
+                                      type=OrderType.LIMIT,
                                       limit_price=signal.price
                     )
             submit_and_handle_order(order)
@@ -50,11 +49,18 @@ class ExecutionHandler():
             order = LimitOrderRequest(symbol=signal.ticker,
                                       qty=qty,
                                       side=OrderSide.BUY,
+                                      type=OrderType.LIMIT,
                                       limit_price=signal.price
                                     )
             submit_and_handle_order(order)
         else:
-            logging.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
+            should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
+            if should_close_position:
+                logging.info("Detected signal to close position for {}".format(signal.ticker))
+                order = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
+                submit_and_handle_order(order)
+            else:
+                logging.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
 
     def get_all_positions(self):
         return self.trading_client.get_all_positions()
@@ -72,7 +78,6 @@ class ExecutionHandler():
             self.run_backtest_trade(signal_data)
         for signal in signal_data.values():
             # Show initial portfolio status
-            self.position_manager.update_positions(show_status=True)
             self.execute_trade(signal, backtest)
 
     def is_market_open(self):
@@ -80,22 +85,6 @@ class ExecutionHandler():
         clock: Clock = self.trading_client.get_clock()
         return clock.is_open
     
-    def manage_existing_positions(self, analyzer):
-        """Manage existing positions"""
-        current_positions = self.position_manager.update_positions()
-        if not current_positions:
-            return
-            
-        # Check each position
-        for symbol in list(current_positions.keys()):
-            position = current_positions[symbol]
-            side = OrderSide.BUY if float(position.qty) > 0 else OrderSide.SELL
-            technical_data = analyzer.analyze_stock(symbol, side)
-            
-            if technical_data and self.should_exit_position(symbol, technical_data):
-                print(f"\nSELL {symbol}: {', '.join(technical_data['exit_signals'])}")
-                self.position_manager.close_position(symbol)
-
     def run_backtest_trade(signal):
         """Simulate trade execution and determine outcome."""
         order = dict()
