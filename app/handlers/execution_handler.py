@@ -19,7 +19,7 @@ class ExecutionHandler():
     def execute_trade(self, signal: Signal, backtest=False):
         """Execute a trade only during market hours."""
         if backtest:
-            self.run_backtest_trade(signal)
+            return self.run_backtest_trade(signal)
         if not self.is_market_open():
             logging.info(f"Market is closed. Cannot execute trade for {signal['ticker']}.")
             return
@@ -33,35 +33,37 @@ class ExecutionHandler():
             else:
                 trade_timestamp = order.filled_at
             self.save_trade(signal, order, trade_timestamp)
+            return order
 
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=0.045)
         # if sell, check if we have shares to sell
         if is_good_trade and signal.side in OrderSide.SELL:
-            order = LimitOrderRequest(symbol=signal.ticker, 
+            order_request = LimitOrderRequest(symbol=signal.ticker, 
                                       qty=qty, 
                                       side=OrderSide.SELL, 
                                       type=OrderType.LIMIT,
                                       limit_price=signal.price
                     )
-            submit_and_handle_order(order)
+            order = submit_and_handle_order(order_request)
        
         elif is_good_trade and signal.side in OrderSide.BUY:   
-            order = LimitOrderRequest(symbol=signal.ticker,
+            order_request = LimitOrderRequest(symbol=signal.ticker,
                                       qty=qty,
                                       side=OrderSide.BUY,
                                       type=OrderType.LIMIT,
                                       limit_price=signal.price
                                     )
-            submit_and_handle_order(order)
+            order = submit_and_handle_order(order_request)
         else:
             should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
             if should_close_position:
                 logging.info("Detected signal to close position for {}".format(signal.ticker))
-                order = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
-                submit_and_handle_order(order)
+                order_request = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
+                order = submit_and_handle_order(order_request)
             else:
                 logging.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
-
+        return order or None
+    
     def get_all_positions(self):
         return self.trading_client.get_all_positions()
 
@@ -85,20 +87,29 @@ class ExecutionHandler():
         clock: Clock = self.trading_client.get_clock()
         return clock.is_open
     
-    def run_backtest_trade(signal):
+    def run_backtest_trade(self, signal: Signal):
         """Simulate trade execution and determine outcome."""
         order = dict()
-        if signal['action'] == 'buy':
-            order['side'] = OrderSide.BUY
-        elif signal['action'] == 'sell':
-            order['side'] = OrderSide.SELL
-        order['symbol'] = signal.ticker
+        if signal.action == 'buy':
+            qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=0.045, is_backtest=True)
+            if is_good_trade:
+                order['qty'] = qty
+                order['side'] = OrderSide.BUY
+                order['price'] = signal.price
+        elif signal.action == 'sell':
+            qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=0.045)
+            if is_good_trade:
+                order['side'] = OrderSide.SELL
+                order['qty'] = qty
+                order['price'] = signal.price
+        order.update(signal.__dict__())
         return order
     
     def save_trade(self, signal: Signal, order: Order, trade_timestamp):
         conn = duckdb.connect(f"{self.db_base_path}/trades.db")
         conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}, {order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price}, '{order.client_order_id}')")
         conn.close()
+        logging.info('Trade saved for ticker', order.symbol)
 
     def submit_order(self, order_request):
         """this function exists to mock the order submission"""
