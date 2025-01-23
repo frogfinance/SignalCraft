@@ -11,7 +11,16 @@ Get an account at -> https://alpaca.markets
 
 SignalCraft is intended for educational and experimentation purposes only. It does not provide financial, trading, or investment advice. Use this project at your own risk, and consult a licensed financial professional before making any trading decisions. The creators of SignalCraft are not responsible for any financial losses or damages resulting from the use of this software.
 
-### Getting Started
+### Run the trader!
+
+1. Setup account with Alpaca
+2. Update `tickers.txt`
+3. Create a new file `.env` & copy the default values from `.env-example`
+4. Update the `.env` with Alpaca API
+5. Install Docker (if needed)
+6. Run `docker compose up -d` to start the Algo Trader
+
+### Getting Started - Local Development & Backtesting
 
 SignalCraft uses [duckdb](https://duckdb.org/) file bases databases to keep our valuable CPU resources limited to our application and not our database. 
 
