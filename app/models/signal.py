@@ -30,7 +30,8 @@ class Signal:
             'action': self.action,
             'price': self.price,
             'reason': self.reason,
-            'strategy': self.strategy
+            'strategy': self.strategy,
+            'ticker': self.ticker
         }
     
     def __str__(self):
