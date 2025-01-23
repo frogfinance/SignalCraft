@@ -103,5 +103,5 @@ class TradingSystem:
             signal_data = self.strategy_handler.generate_signals()  # Generate signals from strategy
 
             self.execution_handler.handle_execution(signal_data)  # Execute trades
-
+            
             asyncio.sleep(300)  # Sleep for 300 seconds before running again
