@@ -8,6 +8,7 @@ class Signal:
         self.strategy = strategy
         self.price = None
         self.ticker = None
+        self.timestamp = None
 
     def __str__(self):
         return f"Signal(action={self.action}, reason={self.reason}, strategy={self.strategy})"

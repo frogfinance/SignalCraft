@@ -3,8 +3,10 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.trading.requests import MarketOrderRequest
 from datetime import datetime
 import logging
-
 from app.models.position import Position
+
+logger = logging.getLogger("app")
+
 
 class PositionManager:
     def __init__(self, trading_client: TradingClient, backtest=False):
@@ -23,7 +25,7 @@ class PositionManager:
         self.update_positions()
         self.update_pending_orders()
     
-    def calculate_target_position(self, symbol, price, side, target_pct=None, is_backtest=False):
+    def calculate_target_position(self, symbol, price, side, target_pct=None):
         """
         Calculate target position size considering existing positions
         Args:
@@ -43,7 +45,7 @@ class PositionManager:
         
         # Check if we're already at max exposure
         if total_exposure >= self.max_total_exposure:
-            logging.info(f"Maximum total exposure reached: {total_exposure:.1%}")
+            logger.info(f"Maximum total exposure reached: {total_exposure:.1%}")
             return 0, False
         
         # Use provided target_pct or default max_position_size
@@ -57,12 +59,12 @@ class PositionManager:
             
             # Don't add if already at target size
             if current_exposure >= position_size:
-                logging.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
+                logger.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
                 return 0, False
             
             # Don't add if position moving against us
             if current_position.pl_pct < -0.02:  # -2% loss threshold
-                logging.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
+                logger.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
                 return 0, False
             
             # Calculate remaining size to reach target
@@ -72,7 +74,7 @@ class PositionManager:
         else:
             # New position - use full target size
             target_shares = int(target_position_value / price)
-            logging.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
+            logger.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
             return target_shares, True
 
     def check_position_available(self, symbol):
@@ -85,22 +87,22 @@ class PositionManager:
             for pos in positions:
                 if pos.symbol == symbol:
                     if float(pos.qty_available) == 0:
-                        logging.info(f"Skipping {symbol} - all shares held for orders")
+                        logger.info(f"Skipping {symbol} - all shares held for orders")
                         return False
                     return True
                     
-            logging.info(f"Position not found: {symbol}")
+            logger.info(f"Position not found: {symbol}")
             return False
             
         except Exception as e:
-            logging.info(f"Error checking position {symbol}: {str(e)}")
+            logger.info(f"Error checking position {symbol}: {str(e)}")
             return False
     
     def close_position(self, symbol):
         """Close an existing position"""
         # Skip if already pending close or shares held
         if symbol in self.pending_closes:
-            logging.info(f"Skipping {symbol} - close order already pending")
+            logger.info(f"Skipping {symbol} - close order already pending")
             return None
         
         if not self.check_position_available(symbol):
@@ -110,13 +112,13 @@ class PositionManager:
             order = self.trading_client.close_position(symbol)
             if order.status == 'accepted':
                 self.pending_closes.add(symbol)
-                logging.info(f"Close order queued: {symbol}")
+                logger.info(f"Close order queued: {symbol}")
                 return order
                 
         except Exception as e:
-            logging.info(f"\nError closing position in {symbol}:")
-            logging.info(f"Error type: {type(e).__name__}")
-            logging.info(f"Error message: {str(e)}")
+            logger.info(f"\nError closing position in {symbol}:")
+            logger.info(f"Error type: {type(e).__name__}")
+            logger.info(f"Error message: {str(e)}")
             return None
 
     def get_account_info(self):
@@ -176,15 +178,15 @@ class PositionManager:
                     'side': side,
                     'order_id': order.id
                 })
-                logging.info(f"Order queued: {shares} shares of {symbol}")
+                logger.info(f"Order queued: {shares} shares of {symbol}")
             else:
-                logging.info(f"Order executed: {shares} shares of {symbol}")
+                logger.info(f"Order executed: {shares} shares of {symbol}")
             
             return order
         except Exception as e:
-            logging.info(f"\nError placing order:")
-            logging.info(f"Error type: {type(e).__name__}")
-            logging.info(f"Error message: {str(e)}")
+            logger.info(f"\nError placing order:")
+            logger.info(f"Error type: {type(e).__name__}")
+            logger.info(f"Error message: {str(e)}")
             return None
 
     def should_close_position(self, symbol, signal):
@@ -233,13 +235,15 @@ class PositionManager:
         
         if reasons:
             reason_str = ", ".join(reasons)
-            logging.info(f"Closing {symbol} due to: {reason_str}")
+            logger.info(f"Closing {symbol} due to: {reason_str}")
             return True
             
         return False
     
     def update_pending_orders(self):
         """Update list of pending orders, removing executed ones"""
+        if self.is_backtest:
+            return self.update_pending_orders_backtest()
         try:
             # Get all open orders
             orders = self.trading_client.get_orders()
@@ -258,8 +262,10 @@ class PositionManager:
                     })
                     
         except Exception as e:
-            logging.info(f"Error updating orders: {str(e)}")
+            logger.info(f"Error updating orders: {str(e)}")
 
+    def update_pending_orders_backtest(self):
+        pass
 
     def update_positions(self, show_status=True):
         """Update position tracking with current market data
@@ -305,26 +311,26 @@ class PositionManager:
                                for p in active_positions.values())
             
             if show_status:
-                logging.info("\nCurrent Portfolio Status:")
-                logging.info(f"Total Exposure: {total_exposure:.1%}")
+                logger.info("\nCurrent Portfolio Status:")
+                logger.info(f"Total Exposure: {total_exposure:.1%}")
                 for pos in active_positions.values():
                     exposure = pos.get_exposure(account['equity'])
-                    logging.info(f"{pos} ({exposure:.1%} exposure)")
+                    logger.info(f"{pos} ({exposure:.1%} exposure)")
                 
                 if self.pending_closes:
-                    logging.info("\nPending Close Orders:")
+                    logger.info("\nPending Close Orders:")
                     for symbol in self.pending_closes:
-                        logging.info(f"- {symbol}")
+                        logger.info(f"- {symbol}")
                 
                 if self.pending_orders:
-                    logging.info("\nPending New Orders:")
+                    logger.info("\nPending New Orders:")
                     for order in self.pending_orders:
-                        logging.info(f"- {order['symbol']} ({order['side']})")
+                        logger.info(f"- {order['symbol']} ({order['side']})")
                 
             return self.positions
             
         except Exception as e:
-            logging.info(f"Error updating positions: {str(e)}")
+            logger.info(f"Error updating positions: {str(e)}")
             return {}
     
     def update_positions_backtest(self, show_status=True):
