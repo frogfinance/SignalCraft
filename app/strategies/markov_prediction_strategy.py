@@ -3,8 +3,10 @@ from app.models.signal import Signal
 from app.strategies.base import BaseStrategy
 import numpy as np
 import pandas as pd
-import duckdb
-from alpaca.data import TimeFrame
+import logging
+
+logger = logging.getLogger("app")
+
 
 class MarkovPredictionStrategy(BaseStrategy):
 
@@ -26,6 +28,9 @@ class MarkovPredictionStrategy(BaseStrategy):
         Generate buy or sell signals based on the Markov prediction model.
         """
         signal = Signal(strategy=self.name, ticker=ticker)
+        if data.empty:
+            logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
+            return signal
         # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
         timestamp = data['timestamp'].iloc[-1]
         if timestamp.minute % 15 != 0 or data.shape[0] < 15:

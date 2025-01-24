@@ -2,8 +2,11 @@ from app.models.signal import Signal
 from app.strategies.base import BaseStrategy
 import pandas as pd
 import numpy as np
+import logging
 from typing import Dict
 from alpaca.data import TimeFrame
+
+logger = logging.getLogger("app")
 
 class MarketProfileStrategy(BaseStrategy):
     def __init__(self, timeframe: TimeFrame.Hour):
@@ -42,7 +45,10 @@ class MarketProfileStrategy(BaseStrategy):
     def generate_signal(self, ticker, data: pd.DataFrame) -> Signal:
         """Generate buy/sell signals based on market profile and technical indicators."""
         signal = Signal(strategy='market_profile', ticker=ticker)
-
+        if data.empty:
+            logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
+            return signal
+        
         # Ensure there are enough 1-minute candles for aggregation
         required_candles = 60  # For 1-hour aggregation
         if data.shape[0] < required_candles:

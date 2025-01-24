@@ -1,6 +1,9 @@
 import duckdb
+import logging
 from alpaca.data import TimeFrame
 from datetime import datetime
+
+logger = logging.getLogger("app")
 
 class BaseStrategy:
     def generate_signal(self, ticker, data):
@@ -40,14 +43,26 @@ def get_ticker_data(ticker, connection, timeframe=TimeFrame.Minute, db_base_path
     return data
 
 
-def get_ticker_data_by_timeframe(ticker, connection, timeframe=TimeFrame.Minute, db_base_path='dbs', end: datetime=None):
-    data = None
-    # Query the minute-level data
-    query = f"SELECT * FROM ticker_data where timestamp < {end.timestamp()} ORDER BY timestamp ASC"
+def get_ticker_data_by_timeframe(ticker, connection, timeframe=TimeFrame.Minute, db_base_path='dbs', end: datetime = None):
+    if end is None:
+        raise ValueError("The 'end' parameter cannot be None.")
+    
+    # Format the `end` timestamp as a string that DuckDB can interpret
+    end_timestamp_str = end.strftime('%Y-%m-%d %H:%M:%S')
+
+    query = f"""
+        SELECT timestamp, open, high, low, close, volume, vwap 
+        FROM ticker_data 
+        WHERE timestamp < TIMESTAMP '{end_timestamp_str}' 
+        ORDER BY timestamp ASC
+    """
+    
     try:
         data = connection.sql(query).df()  # Convert to Pandas DataFrame
     except Exception as e:
         connection.close()
+        logger.error(f"Error fetching data: {e}")
         connection = duckdb.connect(f"{db_base_path}/{ticker}_{timeframe}_data.db")
         data = connection.sql(query).df()
+    
     return data
