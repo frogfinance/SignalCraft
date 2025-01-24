@@ -5,6 +5,8 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data import StockBarsRequest
 from alpaca.data import TimeFrame
 
+logger = logging.getLogger("app")
+
 
 class DataHandler():
     def __init__(self, tickers, api_key, api_secret, db_base_path, timeframe=TimeFrame.Minute):
@@ -39,19 +41,19 @@ class DataHandler():
             )
             data = self.data_store.get_stock_bars(request)
             if data.data is None or get_data_for_tickers[0] not in data.data.keys():
-                logging.info("No data received", data)
+                logger.info("No data received", data)
                 return None
             else:    
                 return data.data
         except Exception as e:
-            logging.error(f"Error fetching market data: {e}")
+            logger.error(f"Error fetching market data: {e}")
             return None
     
     def get_backtest_data(self):
         data = dict()
         for ticker in self.tickers:
             conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
-            ticker_data = conn.sql(f"SELECT * FROM ticker_data where order by timestamp ASC").df()
+            ticker_data = conn.sql(f"SELECT * FROM ticker_data ORDER BY timestamp ASC").df()
             conn.close()
             data[ticker] = ticker_data
         return data
@@ -63,7 +65,7 @@ class DataHandler():
                 row_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
                 self.save_to_db(ticker, row_str, db_base_path=self.db_base_path, timeframe=self.timeframe)
             
-            logging.info('Data saved for ticker', ticker)
+            logger.info('Data saved for ticker', ticker)
 
     def save_to_db(self, ticker, data):
         db_path = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"

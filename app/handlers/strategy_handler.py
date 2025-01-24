@@ -1,10 +1,14 @@
 import duckdb
+import logging
 
+from app.models.signal import Signal
 from app.strategies.base import get_ticker_data, get_ticker_data_by_timeframe
 from app.strategies.market_profile_strategy import MarketProfileStrategy
 from app.strategies.markov_prediction_strategy import MarkovPredictionStrategy
 from app.strategies.base import BaseStrategy
 from alpaca.data import TimeFrame
+
+logger = logging.getLogger("app")
 
 
 class StrategyHandler():
@@ -14,7 +18,7 @@ class StrategyHandler():
         self.tickers = tickers
         self.timeframe = timeframe
         self.markov_prediction = MarkovPredictionStrategy(db_base_path=self.db_base_path)
-        self.market_profile_strategy = MarketProfileStrategy()
+        self.market_profile_strategy = MarketProfileStrategy(timeframe=self.timeframe)
         self.strategies = {
             'markov': self.markov_prediction,
             'market_profile': self.market_profile_strategy
@@ -32,9 +36,10 @@ class StrategyHandler():
             connection.close()
             most_recent_ticker_datetime = ticker_data['timestamp'].max()
             for strategy in self.strategies.values():
-                signal_data[ticker] = strategy.generate_signal(ticker, ticker_data)
-                signal_data['timestamp'] = most_recent_ticker_datetime
-                if signal_data['action'] in ['buy', 'sell']:
+                signal: Signal = strategy.generate_signal(ticker, ticker_data)
+                if signal is not None and signal.action is not None:
+                    logging.info(f"Signal generated for {ticker}: {signal.action}")
+                    signal.timestamp = most_recent_ticker_datetime
                     signal_data[ticker] = signal_data
             
         return signal_data
