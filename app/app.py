@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
 import asyncio, logging
+import logging.config
 from fastapi import FastAPI
 from app.algo_trader import TradingSystem
+from app.utils import log_util
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
@@ -13,7 +15,7 @@ async def lifespan(app: FastAPI):
 
     # Start the algorithmic trading task
     loop = asyncio.get_event_loop()
-    trader_task = loop.create_task(trading_system.run_algo_trader())
+    trader_task = loop.create_task(trading_system.run())
     
     try:
         # Application is running
@@ -31,6 +33,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+logging_config = log_util.gen_logging_config()
+logging.config.dictConfig(logging_config)
 
 @app.get("/")
 def read_root():
