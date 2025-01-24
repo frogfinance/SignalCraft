@@ -12,7 +12,6 @@
 
 from datetime import datetime, timedelta
 import os
-import sys
 import time
 
 import duckdb
@@ -55,11 +54,12 @@ for ticker in tickers:
 
 
 # create trades table
-trades_db_path = "dbs/trades.db"
-if not os.path.exists(trades_db_path):
-    conn = duckdb.connect(trades_db_path)
-    conn.execute("CREATE TABLE trades (timestamp TIMESTAMP, ticker TEXT, action TEXT, qty INT, price FLOAT, order_id TEXT, strategy TEXT, reason TEXT)")
-    conn.close()
+trades_db_paths = ["dbs/trades.db", "dbs/backtest_trades.db"]
+for trades_db_path in trades_db_paths:
+    if not os.path.exists(trades_db_path):
+        conn = duckdb.connect(trades_db_path)
+        conn.execute("CREATE TABLE trades (timestamp TIMESTAMP, ticker TEXT, action TEXT, qty INT, price FLOAT, order_id TEXT, strategy TEXT, reason TEXT)")
+        conn.close()
 
 
 def save_to_db(ticker, data):
