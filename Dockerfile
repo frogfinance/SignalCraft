@@ -17,6 +17,7 @@ RUN poetry install --no-root
 
 COPY dbs ./dbs
 COPY app ./app
+COPY .env ./.env
 
 EXPOSE 8000
 

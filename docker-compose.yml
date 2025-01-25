@@ -4,9 +4,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      
-    environment:
-      - REDIS_HOST=redis
+    ports:
+      - "8000:8000"
     volumes:
       - ./dbs:/app/dbs
 
