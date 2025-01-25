@@ -14,7 +14,6 @@ COPY pyproject.toml poetry.lock tickers.txt ./
 
 RUN pip install poetry
 RUN poetry install --no-root
-RUN echo `ls -lha`
 
 COPY dbs ./dbs
 COPY app ./app
