@@ -10,14 +10,15 @@ RUN apt-get update && apt-get install -y \
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 
-COPY app/pyproject.toml app/poetry.lock tickers.txt /app/
+COPY pyproject.toml poetry.lock tickers.txt ./
 
 RUN pip install poetry
 RUN poetry install --no-root
+RUN echo `ls -lha`
 
-COPY dbs .
-COPY app .
+COPY dbs ./dbs
+COPY app ./app
 
 EXPOSE 8000
 
-CMD ["poetry", "run", "uvicorn", "app.app:app", "--host", "0.0.0.0", "--port", ":8000"]
+CMD ["poetry", "run", "uvicorn", "app.app:app", "--host", "0.0.0.0", "--port", "8000"]

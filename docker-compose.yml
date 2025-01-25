@@ -1,8 +1,10 @@
 services:
   backend:
+    image: frogfinance/signalcraft:latest
     build:
       context: .
       dockerfile: Dockerfile
+      
     environment:
       - REDIS_HOST=redis
     volumes:
