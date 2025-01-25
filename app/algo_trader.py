@@ -4,6 +4,7 @@ from datetime import datetime
 from alpaca.data import TimeFrame
 import dotenv
 
+from app.backtester import BacktestingSystem
 from app.handlers.data_handler import DataHandler
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.strategy_handler import StrategyHandler
@@ -43,37 +44,12 @@ class TradingSystem:
 
     async def run(self):
         if self.backtest_mode:
-            await self.run_backtest()
+            backtest_system = BacktestingSystem(tickers, ALPACA_API_KEY, ALPACA_API_SECRET)
+            logger.info("AlgoTrader starting backtest mode ->")
+            await backtest_system.run_backtest()
         else:
             await self.run_algo_trader()
 
-    async def run_backtest(self, start_candle_index=1):
-        logger.info("AlgoTrader starting backtest mode ->")
-        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER, is_backtest=True)    
-        self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
-        self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
-        logger.info("AlgoTrader fetching backtest data")
-        backtest_data = self.data_handler.get_backtest_data()
-        backtest_ticker_data = backtest_data[tickers[0]]
-        # the backtest start candle timestamp is the second candle in the backtest data
-        start_candle_timestamp = backtest_ticker_data['timestamp'].iloc[start_candle_index]
-        total_number_candles = len(backtest_ticker_data)
-        candle_index = start_candle_index
-        backtest_data = {'end': start_candle_timestamp}
-        # generate signals is expecting backtest_data with a key 'end' denoting the most recent timestamp
-        # get all timestamps for the backtest data ordered by eldest to youngest
-        logger.info("AlgoTrader begin backtest & signal generation")
-        while candle_index <= total_number_candles:
-            logger.info(f"Running backtest for candle {candle_index}/{total_number_candles}")
-            backtest_data['end'] = backtest_ticker_data['timestamp'].iloc[candle_index]
-            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
-            candle_index += 1
-            for signal in signal_data.values():
-                outcome = self.execution_handler.run_backtest_trade(signal)
-                self.trade_results.append(outcome)
-            await asyncio.sleep(0)
-        
-        logger.info("Backtest completed. Results: {}".format(self.trade_results))
 
     async def run_algo_trader(self):
         """
@@ -87,6 +63,7 @@ class TradingSystem:
         logger.info("Starting live trading mode...")
         self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
         self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
+        self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
 
         is_market_open = self.execution_handler.is_market_open()
         
@@ -96,9 +73,8 @@ class TradingSystem:
             sleep_time = (next_open - datetime.now()).total_seconds()
             data = self.data_handler.fetch_data(use_most_recent=True)
             self.data_handler.save_market_data(data)  # Save to database
+            logger.info("Sleeping until market open...")
             await asyncio.sleep(sleep_time)
-
-        self.strategy_handler = StrategyHandler(tickers)
 
         while True:
             logger.info("Running trader & fetching market data...")
