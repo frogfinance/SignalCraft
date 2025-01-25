@@ -11,11 +11,11 @@ class BaseStrategy:
 
     def fetch_vxx_data(self, end: datetime=None):
         if end:
+            end_timestamp = end.strftime('%Y-%m-%d %H:%M:%S')
             query = f"""
             SELECT timestamp, close as vxx
             FROM ticker_data
-            WHERE symbol = 'VXX'
-            AND timestamp < {end.timestamp()}
+            WHERE timestamp < TIMESTAMP '{end_timestamp}'
             ORDER BY timestamp DESC
             """
         else:

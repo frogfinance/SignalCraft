@@ -27,7 +27,11 @@ class MarkovPredictionStrategy(BaseStrategy):
         """
         Generate buy or sell signals based on the Markov prediction model.
         """
-        signal = Signal(strategy=self.name, ticker=ticker)
+        price = data.iloc[-1]['close']
+        logger.debug(f"Generating signal for {ticker} price={price}")
+        if price is None or price == 0:
+            return Signal(strategy=self.name, ticker=ticker)
+        signal = Signal(strategy=self.name, ticker=ticker, price=price)
         if data.empty:
             logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
             return signal
@@ -35,9 +39,11 @@ class MarkovPredictionStrategy(BaseStrategy):
         timestamp = data['timestamp'].iloc[-1]
         if timestamp.minute % 15 != 0 or data.shape[0] < 15:
             return signal
-
-        current_close, predicted_close = self.make_prediction(data)
-
+        try:
+            current_close, predicted_close = self.make_prediction(data)
+        except ValueError as e:
+            logger.error(f"Failed to make prediction for {ticker}: {e}")
+            return signal
         if predicted_close > current_close * 1.01:
             signal.buy()
             signal.price = current_close
@@ -47,9 +53,10 @@ class MarkovPredictionStrategy(BaseStrategy):
             signal.price = current_close
             signal.reason = 'Predicted close is significantly lower than current close'
 
+        logger.info(f"Signal generated for {ticker}: {signal.action} at {signal.price}")
         return signal
 
-    def make_prediction(self, ticker_data, interval="15T", n_simulations=5000):
+    def make_prediction(self, ticker_data, interval="15min", n_simulations=5000):
         """
         Predict the next close price using Markov chain simulations.
         
@@ -63,14 +70,20 @@ class MarkovPredictionStrategy(BaseStrategy):
             predicted_close: The most commonly predicted close price.
         """
         # Fetch and preprocess VXX data
-        vxx_data = self.fetch_vxx_data()
+        vxx_data = self.fetch_vxx_data(end=ticker_data['timestamp'].iloc[-1])
+        logger.info(f"VXX data: {vxx_data.head()}")
         ticker_data = pd.merge(ticker_data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
+        logger.info(f"Merged data: {ticker_data.head()}")
 
         # Resample data
         ticker_data = self.resample_data(ticker_data, interval=interval)
+        if ticker_data.empty:
+            raise ValueError(f"Resampled data is empty. Cannot make predictions for interval {interval}.")
+
         
+        logger.info(f"Resampled data: {ticker_data.head()}")
         # Train Markov chain
         self.train_markov_chain(ticker_data)
         
@@ -106,24 +119,28 @@ class MarkovPredictionStrategy(BaseStrategy):
             state_index = next_state_index
         return next_state
 
-    def resample_data(data, interval="15T"):
+    def resample_data(self, data, interval="15min"):
         """Resample minute-level data into 15-minute intervals."""
         data['timestamp'] = pd.to_datetime(data['timestamp'])  # Ensure timestamp is datetime
         data.set_index('timestamp', inplace=True)
-
+        def safe_last(x):
+            return x.iloc[-1] if len(x) > 0 else np.nan
+        
         aggregated = data.resample(interval).agg({
             'open': 'first',
             'high': 'max',
             'low': 'min',
             'close': 'last',
             'volume': 'sum',
-            'vwap': lambda x: (x * data['volume']).sum() / data['volume'].sum() if data['volume'].sum() > 0 else None
+            'vwap': lambda x: (x * data['volume']).sum() / data['volume'].sum() if data['volume'].sum() > 0 else None,
+            'vxx': safe_last  
         }).dropna()
 
         aggregated.reset_index(inplace=True)
         return aggregated
 
     def train_markov_chain(self, data):
+        logger.info(f"Training Markov chain with data: {data.head()}")
         data = self.discretize_features(data)
         states = data[['close', 'volume', 'vwap', 'vxx']].values
         unique_states, indices = np.unique(states, axis=0, return_inverse=True)
