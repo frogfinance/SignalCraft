@@ -1,14 +1,15 @@
+from datetime import datetime
 from alpaca.trading.enums import OrderSide
 
 class Signal:
 
-    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None):
+    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None, price=None):
         self.action = 'buy' if buy else 'sell' if sell else None
         self.reason = reason
         self.strategy = strategy
-        self.price = None
-        self.ticker = None
-        self.timestamp = None
+        self.price = price
+        self.ticker = ticker
+        self.timestamp = datetime.now()
 
     def __str__(self):
         return f"Signal(action={self.action}, reason={self.reason}, strategy={self.strategy})"

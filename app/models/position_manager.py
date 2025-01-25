@@ -21,6 +21,16 @@ class PositionManager:
         self.position_step_size = 0.02  # 2% per trade for gradual building
         self.max_total_exposure = 1.6  # 160% total exposure (80% long + 80% short)
         
+        # Backtest account data
+        starting_balance = 30000  # Starting balance for backtest
+        self.base_account_data = dict(
+            equity=starting_balance,
+            buying_power=starting_balance,
+            initial_margin=0,
+            margin_multiplier=1,
+            daytrading_buying_power=starting_balance
+        )
+
         # Initialize current positions and pending orders
         self.update_positions()
         self.update_pending_orders()
@@ -37,6 +47,7 @@ class PositionManager:
         """
         account = self.get_account_info()
         equity = account['equity']
+        logger.info(f'calculating target position for {symbol} with equity {equity} at price {price} and side {side}')
         
         # Calculate current total exposure excluding pending closes
         active_positions = {s: p for s, p in self.positions.items() 
@@ -137,24 +148,11 @@ class PositionManager:
         
     def get_backtest_account_info(self):
         """Get account information for backtesting"""
-        starting_balance = 30000  # Starting balance for backtest
-        base_account_data = dict(
-            equity=starting_balance,
-            buying_power=starting_balance,
-            initial_margin=0,
-            margin_multiplier=1,
-            daytrading_buying_power=starting_balance
-        )
+        
         for ticker, position in self.positions.items():
             starting_balance += position.qty * position.entry_price
-            base_account_data['equity'] = starting_balance - position.pl
-        return {
-            'equity': 1000000,  # Starting equity
-            'buying_power': 1000000,  # Initial buying power
-            'initial_margin': 0,  # Initial margin
-            'margin_multiplier': 1,  # Margin multiplier
-            'daytrading_buying_power': 1000000  # Day trading buying power
-        }
+            self.base_account_data['equity'] = starting_balance - position.pl
+        return self.base_account_data
     
     def place_order(self, symbol, shares, side=OrderSide.BUY):
         """Place a market order"""
@@ -240,6 +238,9 @@ class PositionManager:
             
         return False
     
+    def stats(self):
+        return self.get_account_info()
+
     def update_pending_orders(self):
         """Update list of pending orders, removing executed ones"""
         if self.is_backtest:
