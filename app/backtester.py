@@ -39,5 +39,5 @@ class BacktestingSystem():
                 outcome = self.execution_handler.run_backtest_trade(signal)
                 self.trade_results.append(outcome)
             await asyncio.sleep(0)
-        
+        logger.info("Position Manager stats: {}".format(self.execution_handler.position_manager.stats()))
         logger.info("Backtest completed. Results: {}".format(self.trade_results))
