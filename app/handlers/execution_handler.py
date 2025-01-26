@@ -79,12 +79,13 @@ class ExecutionHandler():
         clock: Clock = self.trading_client.get_clock()
         return clock.next_open
 
-    def handle_execution(self, signal_data: dict, backtest=False):
-        if backtest:
-            self.run_backtest_trade(signal_data)
-        for signal in signal_data.values():
+    def handle_execution(self, signals_map: dict):
+        if self.is_backtest:
+            for signal in signals_map.values():
+                self.run_backtest_trade(signal)
+        for signal in signals_map.values():
             # Show initial portfolio status
-            self.execute_trade(signal, backtest)
+            self.execute_trade(signal)
 
     def is_market_open(self):
         """Check if the market is currently open."""
@@ -95,18 +96,24 @@ class ExecutionHandler():
         """Simulate trade execution and determine outcome."""
         order = dict()
         if signal.action == 'buy':
+            logger.info(f'Buy signal detected for {signal.ticker}')
             qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['qty'] = qty
                 order['side'] = OrderSide.BUY
                 order['price'] = signal.price
+                logger.info(f'Buy order generated for {signal.ticker} qty={qty} price={signal.price}')
         elif signal.action == 'sell':
             qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['side'] = OrderSide.SELL
                 order['qty'] = qty
                 order['price'] = signal.price
+                logger.info(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
+        order['symbol'] = signal.ticker
         order.update(signal.__dict__())
+        self.position_manager.update_positions_backtest(signal.ticker, order)
+        self.position_manager.update_pending_orders_backtest(signal.ticker, order)
         return order
     
     def save_trade(self, signal: Signal, order: Order, trade_timestamp):
