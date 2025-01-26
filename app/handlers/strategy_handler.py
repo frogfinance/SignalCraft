@@ -28,18 +28,20 @@ class StrategyHandler():
         signal_data = dict()
 
         for ticker in self.tickers:
+            if ticker in ['VXX']:
+                continue
             connection = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
             if is_backtest:
                 ticker_data = get_ticker_data_by_timeframe(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path, end=backtest_data['end'])
             else:
                 ticker_data = get_ticker_data(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path)    
             connection.close()
-            most_recent_ticker_datetime = ticker_data['timestamp'].max()
             for strategy in self.strategies.values():
+                if ticker_data.empty:
+                    continue
                 signal: Signal = strategy.generate_signal(ticker, ticker_data)
                 if signal is not None and signal.action is not None:
                     logging.info(f"Signal generated for {ticker}: {signal.action}")
-                    signal.timestamp = most_recent_ticker_datetime
-                    signal_data[ticker] = signal_data
+                    signal_data[ticker] = signal
             
         return signal_data
