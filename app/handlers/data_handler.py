@@ -52,26 +52,25 @@ class DataHandler():
             curr_start = start
             curr_end = start + timedelta(days=1)
             while curr_start <= end:
-                for ticker in self.tickers:
-                    logger.info(f"Fetching data for {ticker} from {curr_start} to {curr_end}")
-                    data = None
-                    request = StockBarsRequest(
-                        symbol_or_symbols=[ticker],
-                        start=curr_start,
-                        end=curr_end,
-                        timeframe=self.timeframe,
-                    )
-                    try:
-                        data = self.data_store.get_stock_bars(request)
-                    except Exception as e:
-                        logger.error(f"Error fetching market data for ticker:{ticker} error; {e}")
-                    
-                    if data and data.data is None:
-                        logger.info("No data received", data)
-                    else:    
-                        logger.info(f"Data received for {ticker} from {curr_start} to {curr_end}")
-                        self.save_market_data(data.data)
-                    logger.info(f"Data saved for {ticker}")
+                logger.info(f"Fetching data for tickers from {curr_start} to {curr_end}")
+                data = None
+                request = StockBarsRequest(
+                    symbol_or_symbols=self.tickers,
+                    start=curr_start,
+                    end=curr_end,
+                    timeframe=self.timeframe,
+                )
+                try:
+                    data = self.data_store.get_stock_bars(request)
+                except Exception as e:
+                    logger.error(f"Error fetching market data for ticker:{ticker} error; {e}")
+                
+                if data and data.data is None:
+                    logger.info("No data received", data)
+                else:    
+                    logger.info(f"Data received for {ticker} from {curr_start} to {curr_end}")
+                    self.save_market_data(data.data)
+                logger.info(f"Data saved for tickers")
                 curr_start = curr_end
                 curr_end = curr_start + timedelta(days=1)
         except Exception as e:
@@ -90,14 +89,17 @@ class DataHandler():
     def save_market_data(self, data: dict):
         for ticker in data.keys():
             ticker_data = data.get(ticker, [])
+            value_strs = []
             for row in ticker_data:
                 value_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
-                logger.info(f"candle values for {ticker}: {value_str}")
-                self.save_to_db(ticker, value_str)
+                logger.debug(f"candle values for {ticker}: {value_str}")
+                value_strs.append(value_str)
+            self.save_to_db(ticker, value_strs)
             
             logger.info('Data saved for ticker {}'.format(ticker))
 
-    def save_to_db(self, ticker, value_str):
+    def save_to_db(self, ticker, value_strs):
+        value_str = ", ".join(value_strs)
         db_path = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"
         conn = duckdb.connect(db_path)
         conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
