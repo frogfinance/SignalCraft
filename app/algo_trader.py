@@ -8,6 +8,7 @@ from app.backtester import BacktestingSystem
 from app.handlers.data_handler import DataHandler
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.strategy_handler import StrategyHandler
+import pytz
 
 dotenv.load_dotenv()
 
@@ -18,6 +19,9 @@ USE_PAPER = os.getenv('USE_PAPER', '1') == '1'
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY_PAPER' if USE_PAPER else 'ALPACA_API_KEY')
 ALPACA_API_SECRET = os.getenv('ALPACA_SECRET_KEY_PAPER' if USE_PAPER else 'ALPACA_SECRET_KEY')
 BACKTEST = os.getenv('BACKTEST', '0') == '1'
+logger.info("env data: BACKTEST={}".format(os.getenv('BACKTEST')))
+
+local_tz = pytz.timezone('America/New_York')
 
 tickers = []
 with open('tickers.txt', 'r') as f:
@@ -62,7 +66,7 @@ class TradingSystem:
         """
         logger.info("Starting live trading mode...")
         self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
-        self.data_handler = DataHandler(tickers=tickers, db_base_path='dbs', timeframe=self.timeframe)
+        self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
 
         is_market_open = self.execution_handler.is_market_open()
@@ -70,9 +74,9 @@ class TradingSystem:
         if not is_market_open:
             logger.info("Market is closed. Fetch any missing data. Skipping signals.")
             next_open = self.execution_handler.get_next_market_open()
-            sleep_time = (next_open - datetime.now()).total_seconds()
-            data = self.data_handler.fetch_data(use_most_recent=True)
-            self.data_handler.save_market_data(data)  # Save to database
+            sleep_time = (next_open - datetime.now(tz=local_tz)).total_seconds()
+            self.data_handler.fetch_data(use_most_recent=True)
+            
             logger.info("Sleeping until market open...")
             await asyncio.sleep(sleep_time)
 
