@@ -50,7 +50,7 @@ class MarketProfileStrategy(BaseStrategy):
             return Signal(strategy=self.name, ticker=ticker)
         signal = Signal(strategy='market_profile', ticker=ticker, price=price)
         if data.empty:
-            logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
+            logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
             return signal
         
         # Ensure there are enough 1-minute candles for aggregation
@@ -88,13 +88,11 @@ class MarketProfileStrategy(BaseStrategy):
         # Conditions for a buy signal
         if latest_row['rsi'] < self.low_rsi_threshold and latest_row['close'] > latest_row['vwap'] and latest_row['macd'] > latest_row['signal_line']:
             signal.buy()
-            signal.price = latest_row['close']
             signal.reason = f'Oversold (RSI < {self.low_rsi_threshold}), price above VWAP, and MACD bullish crossover.'
 
         # Conditions for a sell signal
         if latest_row['rsi'] > self.high_rsi_threshold and latest_row['close'] < latest_row['vwap'] and latest_row['macd'] < latest_row['signal_line']:
             signal.sell()
-            signal.price = latest_row['close']
             signal.reason = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
 
         return signal

@@ -71,19 +71,18 @@ class MarkovPredictionStrategy(BaseStrategy):
         """
         # Fetch and preprocess VXX data
         vxx_data = self.fetch_vxx_data(end=ticker_data['timestamp'].iloc[-1])
-        logger.info(f"VXX data: {vxx_data.head()}")
+        logger.debug(f"VXX data: {vxx_data.head()}")
         ticker_data = pd.merge(ticker_data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
-        logger.info(f"Merged data: {ticker_data.head()}")
+        logger.debug(f"Merged data: {ticker_data.head()}")
 
         # Resample data
         ticker_data = self.resample_data(ticker_data, interval=interval)
         if ticker_data.empty:
             raise ValueError(f"Resampled data is empty. Cannot make predictions for interval {interval}.")
 
-        
-        logger.info(f"Resampled data: {ticker_data.head()}")
+        logger.debug(f"Resampled data: {ticker_data.head()}")
         # Train Markov chain
         self.train_markov_chain(ticker_data)
         
@@ -107,7 +106,9 @@ class MarkovPredictionStrategy(BaseStrategy):
 
         # Determine the most common predicted close price
         predicted_close = np.mean(predictions)  # Alternatively, use np.median or mode
-        current_close = current_state[0]
+        logger.debug(f"Close price: {ticker_data['close'].iloc[-1]}")
+        logger.debug(f"Predicted close price: {predicted_close}")
+        current_close = ticker_data['close'].iloc[-1]
         return current_close, predicted_close
 
 
