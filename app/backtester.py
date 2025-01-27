@@ -5,18 +5,31 @@ from app.handlers.strategy_handler import StrategyHandler
 import logging
 import asyncio  
 
+from alpaca.data import TimeFrame
+
 logger = logging.getLogger("app")
 
 
 class BacktestingSystem():
 
-    def __init__(self, tickers, api_key, api_secret):
+    def __init__(self, tickers, api_key, api_secret, timeframe=TimeFrame.Minute):
+        self.timeframe = timeframe
         self.execution_handler = ExecutionHandler(api_key, api_secret, True, is_backtest=True)    
-        self.data_handler = DataHandler(tickers, api_key, api_secret, db_base_path='dbs', timeframe=self.timeframe)
+        self.data_handler = DataHandler(tickers, api_key, api_secret, db_base_path='dbs', timeframe=timeframe)
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
         self.trade_results = []  # Store results of backtested trades
+        self.tickers = tickers
 
-    async def run_backtest(self, start_candle_index=1):
+    def is_market_open(self, timestamp):
+        if timestamp.weekday() >= 5:
+            return False
+        if timestamp.hour < 9 or timestamp.hour >= 16:
+            return False
+        if timestamp.hour == 9 and timestamp.minute < 30:
+            return False
+        return True
+
+    async def run_backtest(self, start_candle_index=3090):
         logger.info("AlgoTrader BacktestingSystem fetching backtest data")
         backtest_data = self.data_handler.get_backtest_data()
         backtest_ticker_data = backtest_data[self.tickers[0]]
@@ -31,13 +44,17 @@ class BacktestingSystem():
         while candle_index <= total_number_candles:
             logger.debug(f"Running backtest for candle {candle_index}/{total_number_candles}")
             backtest_data['end'] = backtest_ticker_data['timestamp'].iloc[candle_index]
-            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
             candle_index += 1
+            # check if candle data is within market open hours
+            if not self.is_market_open(backtest_data['end']):
+                continue
+            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
             for signal in signal_data.values():
                 if signal is None or signal.action is None:
                     continue
                 outcome = self.execution_handler.run_backtest_trade(signal)
-                self.trade_results.append(outcome)
+                if outcome is not None:
+                    self.trade_results.append(outcome)
             await asyncio.sleep(0)
         logger.info("Position Manager stats: {}".format(self.execution_handler.position_manager.stats()))
         logger.info("Backtest completed. Results: {}".format(self.trade_results))
