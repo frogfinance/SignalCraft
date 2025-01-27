@@ -10,6 +10,8 @@ class Signal:
         self.price = price
         self.ticker = ticker
         self.timestamp = datetime.now()
+        self.momentum = None
+        self.score = None
 
     def __str__(self):
         return f"Signal(action={self.action}, reason={self.reason}, strategy={self.strategy})"
@@ -30,7 +32,7 @@ class Signal:
     def __dict__(self):
         return {
             'action': self.action,
-            'price': self.price,
+            'price': float(self.price),
             'reason': self.reason,
             'strategy': self.strategy,
             'ticker': self.ticker

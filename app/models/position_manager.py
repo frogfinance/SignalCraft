@@ -22,14 +22,10 @@ class PositionManager:
         self.max_total_exposure = 1.6  # 160% total exposure (80% long + 80% short)
         
         # Backtest account data
-        starting_balance = 30000  # Starting balance for backtest
-        self.base_account_data = dict(
-            equity=starting_balance,
-            buying_power=starting_balance,
-            initial_margin=0,
-            margin_multiplier=1,
-            daytrading_buying_power=starting_balance
-        )
+        self.starting_balance = 30000  # Starting balance for backtest
+        self.cash_balance = self.starting_balance
+        self.equity = self.starting_balance
+        self.unrealized_pnl = 0
 
         # Initialize current positions and pending orders
         self.update_positions()
@@ -64,29 +60,34 @@ class PositionManager:
         target_position_value = equity * position_size
         current_position = active_positions.get(symbol)
         
-        if current_position:
-            # Position exists - check if we should add more
-            current_exposure = current_position.get_exposure(equity)
-            
-            # Don't add if already at target size
-            if current_exposure >= position_size:
-                logger.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
-                return 0, False
-            
-            # Don't add if position moving against us
-            if current_position.pl_pct < -0.02:  # -2% loss threshold
-                logger.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
-                return 0, False
-            
-            # Calculate remaining size to reach target
-            remaining_size = target_position_value - (current_position.qty * price)
-            return int(remaining_size / price), True
-            
-        else:
-            # New position - use full target size
-            target_shares = int(target_position_value / price)
-            logger.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
-            return target_shares, True
+        try:
+            if current_position:
+                # Position exists - check if we should add more
+                current_exposure = current_position.get_exposure(equity)
+                
+                # Don't add if already at target size
+                if current_exposure >= position_size:
+                    logger.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
+                    return 0, False
+                
+                # Don't add if position moving against us
+                if current_position.pl_pct < -0.02:  # -2% loss threshold
+                    logger.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
+                    return 0, False
+                
+                # Calculate remaining size to reach target
+                remaining_size = target_position_value - (current_position.qty * price)
+                return int(remaining_size / price), True
+                
+            else:
+                # New position - use full target size
+                target_shares = int(target_position_value / price)
+                logger.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
+                return target_shares, True
+        except Exception as e:
+            logger.info("Error calculating target position {}@{}".format(symbol, price))
+            logger.info(f"Error calculating target position: {str(e)}")
+            return 0, False
 
     def check_position_available(self, symbol):
         """Check if position is available to close"""
@@ -147,45 +148,15 @@ class PositionManager:
             }
         
     def get_backtest_account_info(self):
-        """Get account information for backtesting"""
-        
-        for ticker, position in self.positions.items():
-            starting_balance += position.qty * position.entry_price
-            self.base_account_data['equity'] = starting_balance - position.pl
-        return self.base_account_data
+        """Get simulated account information during backtesting."""
+        return {
+            'equity': float(self.equity),
+            'buying_power': float(self.cash_balance),
+            'initial_margin': 0,
+            'margin_multiplier': 1,
+            'daytrading_buying_power': float(self.cash_balance)
+        }
     
-    def place_order(self, symbol, shares, side=OrderSide.BUY):
-        """Place a market order"""
-        if shares <= 0:
-            return None
-            
-        order_details = MarketOrderRequest(
-            symbol=symbol,
-            qty=shares,
-            side=side,
-            time_in_force=TimeInForce.DAY
-        )
-        
-        try:
-            # Place order and track status
-            order = self.trading_client.submit_order(order_details)
-            if order.status in ['new', 'accepted', 'pending']:
-                self.pending_orders.append({
-                    'symbol': symbol,
-                    'shares': shares,
-                    'side': side,
-                    'order_id': order.id
-                })
-                logger.info(f"Order queued: {shares} shares of {symbol}")
-            else:
-                logger.info(f"Order executed: {shares} shares of {symbol}")
-            
-            return order
-        except Exception as e:
-            logger.info(f"\nError placing order:")
-            logger.info(f"Error type: {type(e).__name__}")
-            logger.info(f"Error message: {str(e)}")
-            return None
 
     def should_close_position(self, symbol, signal):
         """Determine if a position should be closed based on technical analysis"""
@@ -205,26 +176,28 @@ class PositionManager:
         if position.pl_pct < -0.05:  # -5% stop loss
             reasons.append(f"Stop loss hit: {position.pl_pct:.1%} P&L")
         
-        # # 2. Technical score moves against position
-        # technical_score = signal['score']
-        # if position.side == OrderSide.BUY and technical_score < 0.4:
-        #     reasons.append(f"Weak technical score for long: {technical_score:.2f}")
-        # elif position.side == OrderSide.SELL and technical_score > 0.6:
-        #     reasons.append(f"Strong technical score for short: {technical_score:.2f}")
+        # 2. Technical score moves against position
+        technical_score = signal.score
+        if technical_score:
+            if position.side == OrderSide.BUY and technical_score < 0.4:
+                reasons.append(f"Weak technical score for long: {technical_score:.2f}")
+            elif position.side == OrderSide.SELL and technical_score > 0.6:
+                reasons.append(f"Strong technical score for short: {technical_score:.2f}")
         
-        # # 3. Momentum moves against position
-        # momentum = signal['momentum']
-        # if position.side == OrderSide.BUY and momentum < -0.02:  # -2% momentum for longs
-        #     reasons.append(f"Negative momentum for long: {momentum:.1f}%")
-        # elif position.side == OrderSide.SELL and momentum > 0.02:  # +2% momentum for shorts
-        #     reasons.append(f"Positive momentum for short: {momentum:.1f}%")
+        # 3. Momentum moves against position
+        if signal.momentum:
+            momentum = signal.momentum
+            if position.side == OrderSide.BUY and momentum < -0.02:  # -2% momentum for longs
+                reasons.append(f"Negative momentum for long: {momentum:.1f}%")
+            elif position.side == OrderSide.SELL and momentum > 0.02:  # +2% momentum for shorts
+                reasons.append(f"Positive momentum for short: {momentum:.1f}%")
         
-        # # 4. Over exposure - close weakest positions
-        # if total_exposure > self.max_total_exposure:
-        #     # Close positions with weak technicals when over-exposed
-        #     if (position.side == OrderSide.BUY and technical_score < 0.5) or \
-        #        (position.side == OrderSide.SELL and technical_score > 0.5):
-        #         reasons.append(f"Reducing exposure ({total_exposure:.1%} total)")
+        # 4. Over exposure - close weakest positions
+        if total_exposure > self.max_total_exposure:
+            # Close positions with weak technicals when over-exposed
+            if (position.side == OrderSide.BUY and technical_score < 0.5) or \
+               (position.side == OrderSide.SELL and technical_score > 0.5):
+                reasons.append(f"Reducing exposure ({total_exposure:.1%} total)")
         
         # 5. Mediocre performance with significant age
         position_age = (datetime.now() - position.entry_time).days
@@ -241,10 +214,11 @@ class PositionManager:
     def stats(self):
         return self.get_account_info()
 
+
     def update_pending_orders(self):
         """Update list of pending orders, removing executed ones"""
         if self.is_backtest:
-            return self.update_pending_orders_backtest()
+            return 
         try:
             # Get all open orders
             orders = self.trading_client.get_orders()
@@ -265,16 +239,14 @@ class PositionManager:
         except Exception as e:
             logger.info(f"Error updating orders: {str(e)}")
 
-    def update_pending_orders_backtest(self):
-        pass
 
-    def update_positions(self, show_status=True):
+    def update_positions(self, order=None, show_status=True):
         """Update position tracking with current market data
         Args:
             show_status: Whether to print current portfolio status
         """
         if self.is_backtest:
-            return self.update_positions_backtest(show_status)
+            return self.update_positions_backtest(order, show_status=show_status)
         try:
             alpaca_positions = self.trading_client.get_all_positions()
             current_symbols = set()
@@ -334,6 +306,31 @@ class PositionManager:
             logger.info(f"Error updating positions: {str(e)}")
             return {}
     
-    def update_positions_backtest(self, show_status=True):
-        pass
+    def update_positions_backtest(self, order, show_status=True):
+        """Update positions for backtesting, recalculating unrealized P&L."""
+        if order is None:
+            return
+        else:
+            position = Position(
+                order['symbol'], order['qty'], order['price'], order['side'], datetime.now()
+            )
+            self.positions[order['symbol']] = position
+        # self.unrealized_pnl = 0
+        # for symbol, position in self.positions.items():
+        #     # Update the position's unrealized P&L using the latest price
+        #     latest_price = order['price']
+        #     if latest_price is not None:
+        #         position.update_pl(latest_price)
+        #         self.unrealized_pnl += position.pl
+
+        # # Update equity (cash + unrealized P&L)
+        # self.equity = self.cash_balance + self.unrealized_pnl
+
+        if show_status:
+            logger.info(f"Backtest Portfolio Status:")
+            logger.info(f"Cash Balance: ${self.cash_balance:.2f}")
+            logger.info(f"Equity: ${self.equity:.2f}")
+            logger.info(f"Unrealized P&L: ${self.unrealized_pnl:.2f}")
+            for symbol, position in self.positions.items():
+                logger.info(f"{symbol}: {position}")
     
