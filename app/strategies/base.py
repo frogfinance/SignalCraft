@@ -16,13 +16,13 @@ class BaseStrategy:
             SELECT timestamp, close as vxx
             FROM ticker_data
             WHERE timestamp < TIMESTAMP '{end_timestamp}'
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             """
         else:
             query = """
             SELECT timestamp, close as vxx
             FROM ticker_data
-            ORDER BY timestamp DESC
+            ORDER BY timestamp ASC
             """
         conn = duckdb.connect(f"{self.db_base_path}/VXX_1Min_data.db")
         df = conn.sql(query).fetchdf()
