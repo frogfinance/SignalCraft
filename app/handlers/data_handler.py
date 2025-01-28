@@ -65,7 +65,7 @@ class DataHandler():
                 except Exception as e:
                     logger.error(f"Error fetching market data for ticker:{ticker} error; {e}")
                 
-                if data and data.data is None:
+                if data is None or data.data is None:
                     logger.info("No data received", data)
                 else:    
                     logger.info(f"Data received for {ticker} from {curr_start} to {curr_end}")
