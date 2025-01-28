@@ -82,9 +82,8 @@ class TradingSystem:
 
         while True:
             logger.info("Running trader & fetching market data...")
-            data = self.data_handler.fetch_data(use_most_recent=True)
+            self.data_handler.fetch_data(use_most_recent=True)
 
-            self.data_handler.save_market_data(data)  # Save to database
             logger.info("Market data saved successfully.")
 
             # generate signals from strategy
