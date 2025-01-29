@@ -9,6 +9,7 @@ class Position:
         self.entry_time = entry_time
         self.target_qty = float(qty)  # For gradual position building/reduction
         self.pl_pct = 0  # Current P&L percentage
+        self.pl = 0  # Current P&L in dollars
         self.current_price = entry_price
         
     def update_pl(self, current_price):
