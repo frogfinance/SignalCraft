@@ -94,29 +94,29 @@ class ExecutionHandler():
     
     def run_backtest_trade(self, signal: Signal):
         """Simulate trade execution and determine outcome."""
-        logger.info('Running backtest trade for ticker {} with signal {}'.format(signal.ticker, signal))
+        logger.debug('Running backtest trade for ticker {} with signal {}'.format(signal.ticker, signal))
         order = dict()
         order_generated = False
         if signal.action == 'buy':
-            logger.info(f'Buy signal detected for {signal.ticker}')
+            logger.debug(f'Buy signal detected for {signal.ticker}')
             qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['qty'] = qty
                 order['side'] = OrderSide.BUY
-                logger.info(f'Buy order generated for {signal.ticker} qty={qty} price={signal.price}')
+                logger.debug(f'Buy order generated for {signal.ticker} qty={qty} price={signal.price}')
                 order_generated = True
         elif signal.action == 'sell':
             qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['side'] = OrderSide.SELL
                 order['qty'] = qty
-                logger.info(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
+                logger.debug(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
                 order_generated = True
         order['symbol'] = signal.ticker
         order.update(signal.__dict__())
         if order_generated:
             logger.info('Order generated for ticker {} with signal {}'.format(order['symbol'], signal))
-            self.position_manager.update_positions_backtest(order)
+            self.position_manager.update_positions_backtest(order, show_status=True)
             return order
         else:
             return None
