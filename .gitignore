@@ -8,3 +8,4 @@ internal/
 .vscode/
 .pytest_cache/
 exclude.txt
+*.code-workspace
