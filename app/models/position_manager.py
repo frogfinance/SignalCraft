@@ -43,17 +43,17 @@ class PositionManager:
         """
         account = self.get_account_info()
         equity = account['equity']
-        logger.info(f'calculating target position for {symbol} with equity {equity} at price {price} and side {side}')
+        logger.debug(f'calculating target position for {symbol} with equity {equity} at price {price} and side {side}')
         
         # Calculate current total exposure excluding pending closes
         active_positions = {s: p for s, p in self.positions.items() 
                           if s not in self.pending_closes}
-        total_exposure = sum(p.get_exposure(equity) for p in active_positions.values())
+        total_exposure = sum(p.get_exposure(equity) for p in active_positions.values() if p is not None)
         
         if side == OrderSide.BUY:
             # Check if we're already at max exposure
             if total_exposure >= self.max_total_exposure:
-                logger.info(f"Maximum total exposure reached: {total_exposure:.1%}")
+                logger.debug(f"Maximum total exposure reached: {total_exposure:.1%}")
                 return 0, False
         
         # Use provided target_pct or default max_position_size
@@ -68,7 +68,7 @@ class PositionManager:
                 
                 # Don't add if already at target size
                 if side == OrderSide.BUY and current_exposure >= position_size:
-                    logger.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
+                    logger.debug(f"Target position size reached for {symbol}: {current_exposure:.1%}")
                     return 0, False
                 
                 # Don't add if position moving against us
@@ -84,7 +84,7 @@ class PositionManager:
             else:
                 # New position - use full target size
                 target_shares = int(target_position_value / price)
-                logger.info(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
+                logger.debug(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
                 return target_shares, True
         except Exception as e:
             logger.info("Error calculating target position {}@{}".format(symbol, price))
@@ -101,22 +101,22 @@ class PositionManager:
             for pos in positions:
                 if pos.symbol == symbol:
                     if float(pos.qty_available) == 0:
-                        logger.info(f"Skipping {symbol} - all shares held for orders")
+                        logger.debug(f"Skipping {symbol} - all shares held for orders")
                         return False
                     return True
                     
-            logger.info(f"Position not found: {symbol}")
+            logger.debug(f"Position not found: {symbol}")
             return False
             
         except Exception as e:
-            logger.info(f"Error checking position {symbol}: {str(e)}")
+            logger.error(f"Error checking position {symbol}: {str(e)}")
             return False
     
     def close_position(self, symbol):
         """Close an existing position"""
         # Skip if already pending close or shares held
         if symbol in self.pending_closes:
-            logger.info(f"Skipping {symbol} - close order already pending")
+            logger.debug(f"Skipping {symbol} - close order already pending")
             return None
         
         if not self.check_position_available(symbol):
@@ -126,7 +126,7 @@ class PositionManager:
             order = self.trading_client.close_position(symbol)
             if order.status == 'accepted':
                 self.pending_closes.add(symbol)
-                logger.info(f"Close order queued: {symbol}")
+                logger.debug(f"Close order queued: {symbol}")
                 return order
                 
         except Exception as e:
@@ -208,7 +208,7 @@ class PositionManager:
         
         if reasons:
             reason_str = ", ".join(reasons)
-            logger.info(f"Closing {symbol} due to: {reason_str}")
+            logger.debug(f"Closing {symbol} due to: {reason_str}")
             return True
             
         return False
@@ -319,11 +319,11 @@ class PositionManager:
                 self.cash_balance -= total_cost
                 if self.cash_balance < 0:
                     self.cash_balance += total_cost
-                    logger.info("Insufficient funds to buy")
+                    logger.debug("Insufficient funds to buy")
                     return
             elif order['side'] == OrderSide.SELL:
                 if order['symbol'] not in self.positions:
-                    logger.info("No position to sell")
+                    logger.debug("No position to sell")
                     return
             position = Position(
                 order['symbol'], order['qty'], order['price'], order['side'], datetime.now()
@@ -331,6 +331,9 @@ class PositionManager:
             self.positions[position.symbol] = position
             if order['side'] == OrderSide.SELL:
                 self.cash_balance += total_cost
+                # remove the position from the positions dictionary
+                position.qty = 0
+                self.positions[position.symbol] = position
             elif order['side'] == OrderSide.BUY:
                 self.cash_balance -= total_cost
         
