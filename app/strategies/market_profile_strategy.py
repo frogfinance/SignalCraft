@@ -53,9 +53,12 @@ class MarketProfileStrategy(BaseStrategy):
             logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
             return signal
         
+        timestamp = data['timestamp'].iloc[-1]
         # Ensure there are enough 1-minute candles for aggregation
-        required_candles = 60  # For 1-hour aggregation
+        required_candles = 60 * 7 * 10  #  10 DAYS: 60 min * 7 hours * 10 days
         if data.shape[0] < required_candles:
+            return signal
+        elif timestamp.minute != 0: # Check every hour on the hour
             return signal
 
         # Resample data to the required timeframe (e.g., 1 hour)
