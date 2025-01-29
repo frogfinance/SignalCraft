@@ -30,24 +30,25 @@ class MarkovPredictionStrategy(BaseStrategy):
         price = data.iloc[-1]['close']
         last_close = data['close'].iloc[-1]
         last_candle_data = data.iloc[-1]
-        logger.info("Price: {}".format(price))
-        logger.info(f"Last close price: {last_close}")
-        logger.info(f"Last candle data: {last_candle_data}")
-        logger.info(f"Generating signal for {ticker} price={price}")
+        logger.debug("Price: {}".format(price))
+        logger.debug(f"Last close price: {last_close}")
+        logger.debug(f"Last candle data: {last_candle_data}")
+        logger.debug(f"Generating signal for {ticker} price={price}")
         if price is None or price == 0:
             return Signal(strategy=self.name, ticker=ticker)
         signal = Signal(strategy=self.name, ticker=ticker, price=price)
-        logger.info(f"Signal: {signal}")
+        logger.debug(f"Signal: {signal}")
         if data.empty:
             logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
             return signal
         # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
         timestamp = data['timestamp'].iloc[-1]
-        if timestamp.minute % 15 != 0 or data.shape[0] < 15:
+        # check every hour on the 29th minute
+        if timestamp.minute != 29 or data.shape[0] < 15:
             return signal
         try:
             current_close, predicted_close = self.make_prediction(data)
-            logger.info(f"Predicted close price for {ticker}: {current_close} -> {predicted_close}")
+            logger.debug(f"Predicted close price for {ticker}: {current_close} -> {predicted_close}")
         except ValueError as e:
             logger.error(f"Failed to make prediction for {ticker}: {e}")
             return signal
@@ -58,10 +59,10 @@ class MarkovPredictionStrategy(BaseStrategy):
             signal.sell()
             signal.reason = 'Predicted close is significantly lower than current close'
 
-        logger.info(f"Signal generated for {ticker}: {signal}")
+        logger.debug(f"Signal generated for {ticker}: {signal}")
         return signal
 
-    def make_prediction(self, ticker_data, interval="15min", n_simulations=5000):
+    def make_prediction(self, ticker_data, interval="60min", n_simulations=5000):
         """
         Predict the next close price using Markov chain simulations.
         
@@ -147,7 +148,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         return aggregated
 
     def train_markov_chain(self, data):
-        logger.info(f"Training Markov chain with data: {data.head()}")
+        logger.debug(f"Training Markov chain with data: {data.head()}")
         # data = self.discretize_features(data)
         states = data[['close', 'volume', 'vwap', 'vxx']].values
         unique_states, indices = np.unique(states, axis=0, return_inverse=True)
