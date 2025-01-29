@@ -50,10 +50,11 @@ class PositionManager:
                           if s not in self.pending_closes}
         total_exposure = sum(p.get_exposure(equity) for p in active_positions.values())
         
-        # Check if we're already at max exposure
-        if total_exposure >= self.max_total_exposure:
-            logger.info(f"Maximum total exposure reached: {total_exposure:.1%}")
-            return 0, False
+        if side == OrderSide.BUY:
+            # Check if we're already at max exposure
+            if total_exposure >= self.max_total_exposure:
+                logger.info(f"Maximum total exposure reached: {total_exposure:.1%}")
+                return 0, False
         
         # Use provided target_pct or default max_position_size
         position_size = target_pct if target_pct is not None else self.max_position_size
@@ -66,13 +67,14 @@ class PositionManager:
                 current_exposure = current_position.get_exposure(equity)
                 
                 # Don't add if already at target size
-                if current_exposure >= position_size:
+                if side == OrderSide.BUY and current_exposure >= position_size:
                     logger.info(f"Target position size reached for {symbol}: {current_exposure:.1%}")
                     return 0, False
                 
                 # Don't add if position moving against us
                 if current_position.pl_pct < -0.02:  # -2% loss threshold
                     logger.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
+                    logger.info("MAYBE WE SHOULD SELL!!!")
                     return 0, False
                 
                 # Calculate remaining size to reach target
@@ -308,23 +310,40 @@ class PositionManager:
     
     def update_positions_backtest(self, order, show_status=True):
         """Update positions for backtesting, recalculating unrealized P&L."""
+        
         if order is None:
             return
         else:
+            total_cost = float(order['qty']) * float(order['price'])
+            if order['side'] == OrderSide.BUY:
+                self.cash_balance -= total_cost
+                if self.cash_balance < 0:
+                    self.cash_balance += total_cost
+                    logger.info("Insufficient funds to buy")
+                    return
+            elif order['side'] == OrderSide.SELL:
+                if order['symbol'] not in self.positions:
+                    logger.info("No position to sell")
+                    return
             position = Position(
                 order['symbol'], order['qty'], order['price'], order['side'], datetime.now()
             )
-            self.positions[order['symbol']] = position
-        # self.unrealized_pnl = 0
-        # for symbol, position in self.positions.items():
-        #     # Update the position's unrealized P&L using the latest price
-        #     latest_price = order['price']
-        #     if latest_price is not None:
-        #         position.update_pl(latest_price)
-        #         self.unrealized_pnl += position.pl
-
-        # # Update equity (cash + unrealized P&L)
-        # self.equity = self.cash_balance + self.unrealized_pnl
+            self.positions[position.symbol] = position
+            if order['side'] == OrderSide.SELL:
+                self.cash_balance += total_cost
+            elif order['side'] == OrderSide.BUY:
+                self.cash_balance -= total_cost
+        
+        self.unrealized_pnl = 0
+        for symbol, position in self.positions.items():
+            # Update the position's unrealized P&L using the latest price
+            latest_price = order['price']
+            if latest_price is not None and symbol == order['symbol']:
+                position.update_pl(latest_price)
+                self.unrealized_pnl += position.pl
+            
+        # Update equity (cash + unrealized P&L)
+        self.equity = self.cash_balance + self.unrealized_pnl
 
         if show_status:
             logger.info(f"Backtest Portfolio Status:")
