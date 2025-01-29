@@ -42,7 +42,7 @@ class StrategyHandler():
                     continue
                 signal: Signal = strategy.generate_signal(ticker, ticker_data)
                 if signal is not None and signal.action is not None:
-                    logger.info(f"Signal generated for {ticker}: {signal}")
+                    logger.debug(f"Signal generated for {ticker}: {signal}")
                     signal_data[ticker] = signal
             
         return signal_data

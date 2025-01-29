@@ -115,7 +115,7 @@ class ExecutionHandler():
         order['symbol'] = signal.ticker
         order.update(signal.__dict__())
         if order_generated:
-            logger.info('Order generated for ticker {} with signal {}'.format(order['symbol'], signal))
+            logger.debug('Order generated for ticker {} with signal {}'.format(order['symbol'], signal))
             self.position_manager.update_positions_backtest(order, show_status=True)
             return order
         else:
