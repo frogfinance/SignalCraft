@@ -94,33 +94,41 @@ class ExecutionHandler():
     
     def run_backtest_trade(self, signal: Signal):
         """Simulate trade execution and determine outcome."""
-        logger.debug('Running backtest trade for ticker {} with signal {}'.format(signal.ticker, signal))
         order = dict()
+        order.update(signal.__dict__())
         order_generated = False
+        qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
+        if qty <= 0:
+            logger.info(f"Trade for {signal.ticker} not executed, qty={qty}")
+            return None
         if signal.action == 'buy':
             logger.debug(f'Buy signal detected for {signal.ticker}')
-            qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['qty'] = qty
                 order['side'] = OrderSide.BUY
                 logger.debug(f'Buy order generated for {signal.ticker} qty={qty} price={signal.price}')
                 order_generated = True
         elif signal.action == 'sell':
-            qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
             if is_good_trade:
                 order['side'] = OrderSide.SELL
                 order['qty'] = qty
                 logger.debug(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
                 order_generated = True
+        else:
+            should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
+            if should_close_position:
+                logger.info("Detected signal to close position for {}".format(signal.ticker))
+                order['qty'] = self.position_manager.positions[signal.ticker]['qty']
+                order['side'] = OrderSide.SELL
+                order_generated = True
         order['symbol'] = signal.ticker
-        order.update(signal.__dict__())
         if order_generated:
             logger.debug('Order generated for ticker {} with signal {}'.format(order['symbol'], signal))
-            self.position_manager.update_positions_backtest(order, show_status=True)
+            self.position_manager.update_positions_backtest(order, show_status=False)
             return order
         else:
             return None
-    
+
     def save_trade(self, signal: Signal, order: Order, trade_timestamp):
         db_table = "trades"
         if self.is_backtest:
@@ -134,3 +142,6 @@ class ExecutionHandler():
         """this function exists to mock the order submission"""
         return self.trading_client.submit_order(order_request)
     
+    def update_backtest_positions(self, timestamp, ticker_to_price_map):
+        """Update backtest positions."""
+        self.position_manager.update_backtest_account_position_values(timestamp, ticker_to_price_map)
