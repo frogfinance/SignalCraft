@@ -5,6 +5,7 @@ from app.models.signal import Signal
 from app.strategies.base import get_ticker_data, get_ticker_data_by_timeframe
 from app.strategies.market_profile_strategy import MarketProfileStrategy
 from app.strategies.markov_prediction_strategy import MarkovPredictionStrategy
+from app.strategies.support_resistance_strategy import SupportResistanceStrategy
 from alpaca.data import TimeFrame
 
 logger = logging.getLogger("app")
@@ -18,9 +19,11 @@ class StrategyHandler():
         self.timeframe = timeframe
         self.markov_prediction = MarkovPredictionStrategy(db_base_path=self.db_base_path)
         self.market_profile_strategy = MarketProfileStrategy(timeframe=self.timeframe)
+        self.support_resistance_strategy = SupportResistanceStrategy()
         self.strategies = {
-            'markov': self.markov_prediction,
-            'market_profile': self.market_profile_strategy
+            'support_resistance': self.support_resistance_strategy,
+            # 'markov': self.markov_prediction,
+            # 'market_profile': self.market_profile_strategy
         }
 
     def generate_signals(self, is_backtest=False, backtest_data=None):
