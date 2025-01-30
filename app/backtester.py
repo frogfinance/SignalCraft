@@ -50,11 +50,12 @@ class BacktestingSystem():
                 continue
             signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
             for signal in signal_data.values():
-                if signal is None or signal.action is None:
-                    continue
                 outcome = self.execution_handler.run_backtest_trade(signal)
                 if outcome is not None:
                     self.trade_results.append(outcome)
+                    logger.info(f"Trade outcome: {outcome}")
+            ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
+            self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
             await asyncio.sleep(0)
         logger.info("Position Manager stats: {}".format(self.execution_handler.position_manager.stats()))
         logger.info("Backtest completed. Results: {}".format(self.trade_results))
