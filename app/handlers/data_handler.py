@@ -76,6 +76,29 @@ class DataHandler():
         except Exception as e:
             logger.error(f"Error fetching market data: {e}")
             return None
+        
+    def fetch_most_recent_prices(self):
+        """
+        Fetch the most recent candle data for the specified tickers.
+        """
+        try:
+            ticker_to_price_map = dict()
+            for ticker in self.tickers:
+                connection = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+                most_recent_candle_data = connection.sql(
+                    f"SELECT * FROM ticker_data ORDER BY timestamp DESC LIMIT 1"
+                ).df()
+                connection.close()
+                last_candle = most_recent_candle_data["timestamp"].iloc[0] if not most_recent_candle_data.empty else None
+                if last_candle:
+                    price = most_recent_candle_data["close"].iloc[0]
+                    ticker_to_price_map[ticker] = price
+
+        except Exception as e:
+            logger.error(f"Error fetching most recent prices: {e}")
+            return None
+        
+        return ticker_to_price_map
     
     def get_backtest_data(self):
         data = dict()
