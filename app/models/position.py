@@ -1,8 +1,8 @@
 from alpaca.trading.enums import OrderSide
 
 class Position:
-    def __init__(self, symbol, qty, entry_price, side, entry_time):
-        self.symbol = symbol
+    def __init__(self, ticker, qty, entry_price, side, entry_time):
+        self.ticker = ticker
         self.qty = float(qty)
         self.entry_price = float(entry_price)
         self.side = side
@@ -11,7 +11,8 @@ class Position:
         self.pl_pct = 0  # Current P&L percentage
         self.pl = 0  # Current P&L in dollars
         self.current_price = entry_price
-        
+        self.is_open = True
+
     def update_pl(self, current_price):
         """Update position P&L"""
         self.current_price = float(current_price)
@@ -24,5 +25,5 @@ class Position:
         return position_value / equity
         
     def __str__(self):
-        return (f"{self.symbol}: {self.qty} shares @ ${self.entry_price:.2f} "
+        return (f"{self.ticker}: {self.qty} shares @ ${self.entry_price:.2f} "
                 f"({self.pl_pct:.1%} P&L)")
