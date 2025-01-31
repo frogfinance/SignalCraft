@@ -69,26 +69,36 @@ class TradingSystem:
         self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
 
-        is_market_open = self.execution_handler.is_market_open()
-        
-        if not is_market_open:
-            logger.info("Market is closed. Fetch any missing data. Skipping signals.")
-            next_open = self.execution_handler.get_next_market_open()
-            sleep_time = (next_open - datetime.now(tz=local_tz)).total_seconds()
-            self.data_handler.fetch_data(use_most_recent=True)
-            
-            logger.info("Sleeping until market open...")
-            await asyncio.sleep(sleep_time)
-
         while True:
+            is_market_open = self.execution_handler.is_market_open()
+            
+            if not is_market_open:
+                logger.info("Market is closed. Fetch any missing data. Skipping signals.")
+                next_open = self.execution_handler.get_next_market_open()
+                sleep_time = (next_open - datetime.now(tz=local_tz)).total_seconds()
+                self.data_handler.fetch_data(use_most_recent=True)
+                
+                logger.info("Sleeping until market open...")
+                await asyncio.sleep(sleep_time)
+            else:
+                # self.execution_handler.startup()
+                logger.info("Alpaca Account connected successfully.")
+
             logger.info("Running trader & fetching market data...")
             self.data_handler.fetch_data(use_most_recent=True)
 
-            logger.info("Market data saved successfully.")
+            logger.debug("Market data saved successfully.")
 
             # generate signals from strategy
             signal_data = self.strategy_handler.generate_signals()  # Generate signals from strategy
 
             self.execution_handler.handle_execution(signal_data)  # Execute trades
 
-            asyncio.sleep(300)  # Sleep for 300 seconds before running again
+            # get most recent price data
+            ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
+
+            # check positions
+            self.execution_handler.position_manager.check_positions(ticker_to_price_map)  # Check positions
+            
+            logger.info("Sleeping for 60 seconds...")
+            await asyncio.sleep(60)  # Sleep for 300 seconds before running again
