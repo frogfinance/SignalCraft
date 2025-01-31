@@ -4,6 +4,7 @@ from alpaca.trading.requests import MarketOrderRequest
 from datetime import datetime
 import logging
 from app.models.position import Position
+from app.models.signal import Signal
 
 logger = logging.getLogger("app")
 
@@ -112,8 +113,16 @@ class PositionManager:
             logger.error(f"Error checking position {ticker}: {str(e)}")
             return False
     
-    def close_position(self, ticker):
+    def check_positions(self, ticker_to_price_map):
+        for ticker, position in self.positions.items():
+            signal = Signal(strategy="stop-loss", ticker=ticker, price=ticker_to_price_map[ticker])
+            if self.should_close_position(ticker, signal=signal) is True:
+                self.close_position(ticker, signal=signal)
+
+    def close_position(self, ticker, signal=None):
         """Close an existing position"""
+        if self.is_backtest:
+            return self.close_position_backtest(ticker, signal)
         # Skip if already pending close or shares held
         if ticker in self.pending_closes:
             logger.debug(f"Skipping {ticker} - close order already pending")
@@ -134,6 +143,19 @@ class PositionManager:
             logger.info(f"Error type: {type(e).__name__}")
             logger.info(f"Error message: {str(e)}")
             return None
+
+    def close_position_backtest(self, ticker, signal):
+        """Close a position during backtesting."""
+        position = self.positions.get(ticker)
+        if not position:
+            return
+
+        total_cost = position.qty * signal.price
+        self.cash_balance -= total_cost
+        position.qty = 0
+        position.is_open = False
+        self.positions[ticker] = position
+        return position
 
     def get_account_info(self):
         """Get account information"""
@@ -174,7 +196,7 @@ class PositionManager:
         reasons = []
         
         # 1. Significant loss
-        if position.pl_pct < -0.3:  # -3% stop loss
+        if position.pl_pct < -0.05:  # -5% stop loss
             reasons.append(f"Stop loss hit: {position.pl_pct:.1%} P&L")
         
         # 2. Technical score moves against position
