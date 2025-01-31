@@ -98,10 +98,16 @@ class ExecutionHandler():
         order.update(signal.__dict__())
         order_generated = False
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
-        if qty <= 0:
-            logger.info(f"Trade for {signal.ticker} not executed, qty={qty}")
-            return None
-        if signal.action == 'buy':
+        should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
+        if should_close_position is True:
+            logger.info("Detected signal to close position for {}".format(signal.ticker))
+            order['qty'] = self.position_manager.positions[signal.ticker]['qty']
+            order['side'] = OrderSide.SELL
+            order_generated = True
+        elif qty <= 0:
+            logger.debug(f"Trade for {signal.ticker} not executed, qty={qty}")
+            order_generated = False
+        elif signal.action == 'buy':
             logger.debug(f'Buy signal detected for {signal.ticker}')
             if is_good_trade:
                 order['qty'] = qty
@@ -114,16 +120,9 @@ class ExecutionHandler():
                 order['qty'] = qty
                 logger.debug(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
                 order_generated = True
-        else:
-            should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
-            if should_close_position:
-                logger.info("Detected signal to close position for {}".format(signal.ticker))
-                order['qty'] = self.position_manager.positions[signal.ticker]['qty']
-                order['side'] = OrderSide.SELL
-                order_generated = True
-        order['symbol'] = signal.ticker
+        
         if order_generated:
-            logger.debug('Order generated for ticker {} with signal {}'.format(order['symbol'], signal))
+            logger.debug('Order generated for ticker {} with signal {}'.format(order['ticker'], signal))
             self.position_manager.update_positions_backtest(order, show_status=False)
             return order
         else:
@@ -144,4 +143,5 @@ class ExecutionHandler():
     
     def update_backtest_positions(self, timestamp, ticker_to_price_map):
         """Update backtest positions."""
+        self.position_manager.check_positions(ticker_to_price_map)
         self.position_manager.update_backtest_account_position_values(timestamp, ticker_to_price_map)
