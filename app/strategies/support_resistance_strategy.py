@@ -12,7 +12,7 @@ logger = logging.getLogger("app")
 class SupportResistanceStrategy(BaseStrategy):
     def __init__(self):
         super().__init__()
-        self.lookback = 120  # Number of past intervals to analyze support/resistance
+        self.lookback = 360  # Number of past intervals to analyze support/resistance
         self.support_threshold = 0.02  # 2% threshold to buy near support
         self.resistance_threshold = 0.02  # 2% threshold to sell near resistance
 
@@ -64,10 +64,10 @@ class SupportResistanceStrategy(BaseStrategy):
                 timestamp = timestamp.tz_localize('UTC')
 
             timestamp = timestamp.tz_convert('US/Pacific')
-            logger.info(f'Skipping signal generation for {ticker} at {timestamp}')
+            logger.debug(f'Skipping signal generation for {ticker} at {timestamp}')
             return signal
         else:
-            logger.info(f"Generating signal for {ticker} at {timestamp}")
+            logger.debug(f"Generating signal for {ticker} at {timestamp}")
         
         # Resample data into 15-minute intervals
         data = self.resample_data(data, interval="15min")
