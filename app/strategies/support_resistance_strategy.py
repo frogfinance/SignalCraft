@@ -58,8 +58,16 @@ class SupportResistanceStrategy(BaseStrategy):
 
         timestamp = data['timestamp'].iloc[-1]
         # check every hour on the 29th minute
-        if timestamp.minute % 15 != 0 or data.shape[0] < 15 * self.lookback:
+        if timestamp.minute % 15 != 0 or data.shape[0] < (15 * self.lookback):
+            # convert timestamp to local PST
+            if timestamp.tz is None:  # If timestamp is naive, localize it first
+                timestamp = timestamp.tz_localize('UTC')
+
+            timestamp = timestamp.tz_convert('US/Pacific')
+            logger.info(f'Skipping signal generation for {ticker} at {timestamp}')
             return signal
+        else:
+            logger.info(f"Generating signal for {ticker} at {timestamp}")
         
         # Resample data into 15-minute intervals
         data = self.resample_data(data, interval="15min")
