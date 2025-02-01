@@ -117,6 +117,7 @@ class PositionManager:
         for ticker, position in self.positions.items():
             signal = Signal(strategy="stop-loss", ticker=ticker, price=ticker_to_price_map[ticker])
             if self.should_close_position(ticker, signal=signal) is True:
+                logger.info(f"Detected signal to close position for {ticker}")
                 self.close_position(ticker, signal=signal)
 
     def close_position(self, ticker, signal=None):
@@ -154,7 +155,7 @@ class PositionManager:
         self.cash_balance -= total_cost
         position.qty = 0
         position.is_open = False
-        self.positions[ticker] = position
+        self.positions[ticker] = None
         return position
 
     def get_account_info(self):
@@ -196,7 +197,7 @@ class PositionManager:
         reasons = []
         
         # 1. Significant loss
-        if position.pl_pct < -0.05:  # -5% stop loss
+        if position.pl_pct < -0.04:  # -4% stop loss
             reasons.append(f"Stop loss hit: {position.pl_pct:.1%} P&L")
         
         # 2. Technical score moves against position
