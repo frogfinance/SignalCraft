@@ -77,6 +77,7 @@ class TradingSystem:
                 next_open = self.execution_handler.get_next_market_open()
                 sleep_time = (next_open - datetime.now(tz=local_tz)).total_seconds()
                 self.data_handler.fetch_data(use_most_recent=True)
+                logger.debug("Market data saved successfully.")
                 
                 logger.info("Sleeping until market open...")
                 await asyncio.sleep(sleep_time)
@@ -85,16 +86,15 @@ class TradingSystem:
                 logger.info("Alpaca Account connected successfully.")
 
             logger.info("Running trader & fetching market data...")
-            self.data_handler.fetch_data(use_most_recent=True)
-
-            logger.debug("Market data saved successfully.")
+            if not self.data_handler.is_stream_subscribed:
+                await self.data_handler.subscribe_to_data_stream()
 
             # generate signals from strategy
             signal_data = self.strategy_handler.generate_signals()  # Generate signals from strategy
 
             self.execution_handler.handle_execution(signal_data)  # Execute trades
 
-            # get most recent price data
+            # get most recent price data for position checks
             ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
 
             # check positions
