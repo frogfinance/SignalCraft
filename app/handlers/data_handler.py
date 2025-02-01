@@ -2,6 +2,8 @@ import logging
 import duckdb
 from datetime import datetime, timedelta
 from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.live import StockDataStream
+from alpaca.data.enums import DataFeed
 from alpaca.data import StockBarsRequest
 from alpaca.data import TimeFrame
 
@@ -9,12 +11,16 @@ logger = logging.getLogger("app")
 
 
 class DataHandler():
-    def __init__(self, tickers, api_key, api_secret, db_base_path, timeframe=TimeFrame.Minute):
+    def __init__(self, tickers, api_key, api_secret, db_base_path, timeframe=TimeFrame.Minute, is_backtest=False):
         super().__init__()
         self.tickers = tickers  # List of tickers to subscribe to
         self.db_base_path = db_base_path  # Base path for database files
         self.data_store = StockHistoricalDataClient(api_key, api_secret)   
         self.timeframe = timeframe
+        self.is_backtest = is_backtest
+        self.api_key = api_key
+        self.api_secret = api_secret
+        self.is_stream_subscribed = False
 
     def fetch_data(self, start=None, end=None, days=1, use_most_recent=False):
         """
@@ -108,6 +114,17 @@ class DataHandler():
             conn.close()
             data[ticker] = ticker_data
         return data
+    
+    async def handle_stream_data(self, bar_data):
+        for key, val in bar_data.items():
+            if key not in self.tickers:
+                continue
+            else:
+                logger.info(f"Received data for {key}: {val}")
+                value_str = f"('{val.timestamp}', '{key}', {val.open}, {val.high}, {val.low}, {val.close}, {val.volume}, {val.vwap})"
+                
+                self.save_streaming_ticker_data_to_db(key, value_str)
+                
 
     def save_market_data(self, data: dict):
         for ticker in data.keys():
@@ -127,3 +144,16 @@ class DataHandler():
         conn = duckdb.connect(db_path)
         conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
         conn.close()
+
+    def save_streaming_ticker_data_to_db(self, ticker, value_str):
+        conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+        conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
+        conn.close()
+
+    async def subscribe_to_data_stream(self):
+        stream = StockDataStream(api_key=self.api_key, secret_key=self.api_secret, feed=DataFeed.IEX)
+
+        stream.subscribe_quotes(self.handle_stream_data, *self.tickers)
+        stream.run()
+        self.is_stream_subscribed = True
+        logger.info('Subscribed to data stream')
