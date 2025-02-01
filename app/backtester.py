@@ -15,7 +15,7 @@ class BacktestingSystem():
     def __init__(self, tickers, api_key, api_secret, timeframe=TimeFrame.Minute):
         self.timeframe = timeframe
         self.execution_handler = ExecutionHandler(api_key, api_secret, True, is_backtest=True)    
-        self.data_handler = DataHandler(tickers, api_key, api_secret, db_base_path='dbs', timeframe=timeframe)
+        self.data_handler = DataHandler(tickers, api_key, api_secret, db_base_path='dbs', timeframe=timeframe, is_backtest=True)
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
         self.trade_results = []  # Store results of backtested trades
         self.tickers = tickers
