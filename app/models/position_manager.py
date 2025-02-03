@@ -116,7 +116,7 @@ class PositionManager:
     def check_positions(self, ticker_to_price_map):
         for ticker, position in self.positions.items():
             signal = Signal(strategy="stop-loss", ticker=ticker, price=ticker_to_price_map[ticker])
-            if self.should_close_position(ticker, signal=signal) is True:
+            if position is not None and self.should_close_position(ticker, signal=signal) is True:
                 logger.info(f"Detected signal to close position for {ticker}")
                 self.close_position(ticker, signal=signal)
 
@@ -155,7 +155,7 @@ class PositionManager:
         self.cash_balance -= total_cost
         position.qty = 0
         position.is_open = False
-        self.positions[ticker] = None
+        del self.positions[ticker] 
         return position
 
     def get_account_info(self):
@@ -191,7 +191,7 @@ class PositionManager:
         # Get current exposure
         account = self.get_account_info()
         total_exposure = sum(p.get_exposure(float(account['equity'])) 
-                           for p in self.positions.values())
+                           for p in self.positions.values() if p is not None)
         
         # Close if any of these conditions are met:
         reasons = []
@@ -368,8 +368,9 @@ class PositionManager:
     def update_backtest_account_position_values(self, timestamp, ticker_to_price_mapping):
         for ticker, price in ticker_to_price_mapping.items():
             if ticker in self.positions:
-                self.positions[ticker].update_pl(price)
-                self.unrealized_pnl += self.positions[ticker].pl
+                if self.positions[ticker] is not None:
+                    self.positions[ticker].update_pl(price)
+                    self.unrealized_pnl += self.positions[ticker].pl
 
         self.equity = self.cash_balance + self.unrealized_pnl
         if timestamp.minute % 15 == 0:
@@ -377,6 +378,6 @@ class PositionManager:
             logger.info(f"Cash Balance: ${self.cash_balance:.2f}")
             logger.info(f"Equity: ${self.equity:.2f}")
             logger.info(f"Unrealized P&L: ${self.unrealized_pnl:.2f}")
-            open_positions = {s: p for s, p in self.positions.items() if p.is_open}
+            open_positions = {s: p for s, p in self.positions.items() if p is not None and p.is_open}
             for ticker, position in open_positions.items():
                 logger.info(f"{ticker}: {position}")
