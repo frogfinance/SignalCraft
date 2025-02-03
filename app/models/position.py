@@ -18,6 +18,7 @@ class Position:
         self.current_price = float(current_price)
         multiplier = 1 if self.side == OrderSide.BUY else -1
         self.pl_pct = ((self.current_price / self.entry_price) - 1) * multiplier
+        self.pl = self.current_price - self.entry_price
         
     def get_exposure(self, equity):
         """Calculate position exposure as percentage of equity"""
