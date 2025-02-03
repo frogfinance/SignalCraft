@@ -22,7 +22,6 @@ from alpaca.data import StockBarsRequest, TimeFrame
 USE_PAPER = os.getenv('USE_PAPER', '1') == '1'
 ALPACA_API_KEY = os.getenv('ALPACA_API_KEY_PAPER' if USE_PAPER else 'ALPACA_API_KEY')
 ALPACA_API_SECRET = os.getenv('ALPACA_SECRET_KEY_PAPER' if USE_PAPER else 'ALPACA_SECRET_KEY')
-timeframe = TimeFrame.Day
 
 # keys required for stock historical data client
 client = StockHistoricalDataClient(ALPACA_API_KEY, ALPACA_API_SECRET)
@@ -33,24 +32,20 @@ with open('tickers.txt', 'r') as f:
     tickers = [t.strip() for t in tickers if t]
 
 end = datetime.now()
-if timeframe is TimeFrame.Minute:
-    start = end - timedelta(days=5 * 30)
-elif timeframe is TimeFrame.Day:
-    start = end - timedelta(days=2 * 365)
-else:
-    start = end - timedelta(days=365)
+start = end - timedelta(days=1 * 365)
 get_data_for_tickers = []
 
-for ticker in tickers:
-    db_path = f"dbs/{ticker}_{timeframe}_data.db"
-    if os.path.exists(db_path):
-        print("Database already exists for", ticker)
-    else:
-        conn = duckdb.connect(db_path)
-        conn.sql(f"CREATE TABLE IF NOT EXISTS ticker_data (timestamp TIMESTAMP, ticker TEXT, open FLOAT, high FLOAT, low FLOAT, close FLOAT, volume FLOAT, vwap FLOAT, PRIMARY KEY (timestamp, ticker))")
-        conn.close()
-        print("Database created for", ticker)
-        get_data_for_tickers.append(ticker)
+for timeframe in [TimeFrame.Minute, TimeFrame.Day]:
+    for ticker in tickers:
+        db_path = f"dbs/{ticker}_{timeframe}_data.db"
+        if os.path.exists(db_path):
+            print("Database already exists for", ticker)
+        else:
+            conn = duckdb.connect(db_path)
+            conn.sql(f"CREATE TABLE IF NOT EXISTS ticker_data (timestamp TIMESTAMP, ticker TEXT, open FLOAT, high FLOAT, low FLOAT, close FLOAT, volume FLOAT, vwap FLOAT, PRIMARY KEY (timestamp, ticker))")
+            conn.close()
+            print("Database created for", ticker)
+            get_data_for_tickers.append(ticker)
 
 
 # create trades table
