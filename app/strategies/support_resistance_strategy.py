@@ -13,7 +13,7 @@ class SupportResistanceStrategy(BaseStrategy):
     def __init__(self):
         super().__init__()
         self.lookback = 360  # Number of past intervals to analyze support/resistance
-        self.support_threshold = 0.02  # 2% threshold to buy near support
+        self.support_threshold = 0.015  # 1.5% threshold to buy near support
         self.resistance_threshold = 0.02  # 2% threshold to sell near resistance
 
     def resample_data(self, data: pd.DataFrame, interval="15min") -> pd.DataFrame:
