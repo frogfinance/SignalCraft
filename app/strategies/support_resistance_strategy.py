@@ -16,8 +16,8 @@ class SupportResistanceStrategy(BaseStrategy):
         self.support_threshold = 0.015  # 1.5% threshold to buy near support
         self.resistance_threshold = 0.02  # 2% threshold to sell near resistance
 
-    def resample_data(self, data: pd.DataFrame, interval="15min") -> pd.DataFrame:
-        """Resample minute-level data into 15-minute intervals."""
+    def resample_data(self, data: pd.DataFrame, interval="60min") -> pd.DataFrame:
+        """Resample minute-level data into 60-minute intervals."""
         data['timestamp'] = pd.to_datetime(data['timestamp'])
         data.set_index('timestamp', inplace=True)
 
@@ -58,7 +58,7 @@ class SupportResistanceStrategy(BaseStrategy):
 
         timestamp = data['timestamp'].iloc[-1]
         # check every hour on the 29th minute
-        if timestamp.minute % 15 != 0 or data.shape[0] < (15 * self.lookback):
+        if timestamp.minute == 0 or data.shape[0] < (60 * self.lookback):
             # convert timestamp to local PST
             if timestamp.tz is None:  # If timestamp is naive, localize it first
                 timestamp = timestamp.tz_localize('UTC')
