@@ -65,7 +65,7 @@ class TradingSystem:
         3. Execute trades based on the signals.
         """
         logger.info("Starting live trading mode...")
-        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, USE_PAPER)    
+        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', use_paper=USE_PAPER)    
         self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
 
