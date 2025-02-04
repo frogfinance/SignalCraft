@@ -3,7 +3,7 @@ import logging
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 from alpaca.trading.enums import OrderSide, OrderType
-from alpaca.trading.models import Clock, Order
+from alpaca.trading.models import Clock, Order, TimeInForce
 
 from app.models.position_manager import PositionManager
 from app.models.signal import Signal
@@ -22,17 +22,18 @@ class ExecutionHandler():
     
     def execute_trade(self, signal: Signal, backtest=False):
         """Execute a trade only during market hours."""
+        order = None
         if backtest:
             return self.run_backtest_trade(signal)
         if not self.is_market_open():
-            logger.info(f"Market is closed. Cannot execute trade for {signal['ticker']}.")
+            logger.info(f"Market is closed. Cannot execute trade for {signal.ticker}.")
             return
 
         def submit_and_handle_order(order_request):
             order = self.submit_order(order_request)
             logger.info("Order submitted: {}".format(order))
             if order.filled_at is None:
-                logger.info(f"Order for {signal['ticker']} is still open.")
+                logger.info(f"Order for {signal.ticker} is still open.")
                 trade_timestamp = order.submitted_at
             else:
                 trade_timestamp = order.filled_at
@@ -41,32 +42,39 @@ class ExecutionHandler():
 
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
         # if sell, check if we have shares to sell
-        if is_good_trade and signal.side in OrderSide.SELL:
-            order_request = LimitOrderRequest(symbol=signal.ticker, 
-                                      qty=qty, 
-                                      side=OrderSide.SELL, 
-                                      type=OrderType.LIMIT,
-                                      limit_price=signal.price
-                    )
-            order = submit_and_handle_order(order_request)
-       
-        elif is_good_trade and signal.side in OrderSide.BUY:   
-            order_request = LimitOrderRequest(symbol=signal.ticker,
-                                      qty=qty,
-                                      side=OrderSide.BUY,
-                                      type=OrderType.LIMIT,
-                                      limit_price=signal.price
-                                    )
-            order = submit_and_handle_order(order_request)
-        else:
-            should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
-            if should_close_position:
-                logger.info("Detected signal to close position for {}".format(signal.ticker))
-                order_request = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
+        try:
+            if is_good_trade and signal.side in OrderSide.SELL and qty > 0:
+                order_request = LimitOrderRequest(symbol=signal.ticker, 
+                                        qty=qty, 
+                                        side=OrderSide.SELL, 
+                                        type=OrderType.LIMIT,
+                                        limit_price=signal.price,
+                                        time_in_force = TimeInForce.DAY,
+                        )
+                order = submit_and_handle_order(order_request)
+        
+            elif is_good_trade and signal.side in OrderSide.BUY and qty > 0:   
+                order_request = LimitOrderRequest(symbol=signal.ticker,
+                                        qty=qty,
+                                        side=OrderSide.BUY,
+                                        type=OrderType.LIMIT,
+                                        limit_price=signal.price,
+                                        time_in_force = TimeInForce.DAY,
+                                        )
                 order = submit_and_handle_order(order_request)
             else:
-                logger.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
-        return order or None
+                should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
+                if should_close_position:
+                    logger.info("Detected signal to close position for {}".format(signal.ticker))
+                    order_request = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
+                    order = submit_and_handle_order(order_request)
+                else:
+                    logger.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
+        except Exception as e:
+            logger.error(f"Error executing trade for {signal.ticker}: {e}")
+            logger.info(f"Signal from: symbol={signal.ticker} qty={qty} side={signal.side} price={signal.price}")
+            return None
+        return order
     
     def get_all_positions(self):
         return self.trading_client.get_all_positions()
@@ -133,9 +141,9 @@ class ExecutionHandler():
         if self.is_backtest:
             db_table = "backtest_trades"
         conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
-        conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}, {order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price}, '{order.client_order_id}')")
+        conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}', '{order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price if order.filled_avg_price is not None else 0}, '{order.client_order_id}', '{signal.strategy}', '{signal.reason}')")
         conn.close()
-        logger.info('Trade saved for ticker', order.symbol)
+        logger.debug('Trade saved for ticker: {}'.format(order.symbol))
 
     def submit_order(self, order_request):
         """this function exists to mock the order submission"""
