@@ -42,6 +42,7 @@ class PositionManager:
             target_pct: Target position size as % of equity (e.g. 0.08 for 8%)
         Returns target shares and whether to allow the trade
         """
+        price = float(price)
         account = self.get_account_info()
         equity = account['equity']
         logger.debug(f'calculating target position for {ticker} with equity {equity} at price {price} and side {side}')
@@ -254,7 +255,7 @@ class PositionManager:
             for order in orders:
                 if order.status in ['new', 'accepted', 'pending']:
                     self.pending_orders.append({
-                        'ticker': order.ticker,
+                        'ticker': order.symbol,
                         'shares': float(order.qty),
                         'side': order.side,
                         'order_id': order.id
