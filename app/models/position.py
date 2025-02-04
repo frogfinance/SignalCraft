@@ -22,7 +22,7 @@ class Position:
         
     def get_exposure(self, equity):
         """Calculate position exposure as percentage of equity"""
-        position_value = abs(self.qty * self.current_price)
+        position_value = abs(self.qty * float(self.current_price))
         return position_value / equity
         
     def __str__(self):
