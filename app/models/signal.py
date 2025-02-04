@@ -7,7 +7,7 @@ class Signal:
         self.action = 'buy' if buy else 'sell' if sell else None
         self.reason = reason
         self.strategy = strategy
-        self.price = price
+        self.price = f"{float(price):.2f}" if price else None
         self.ticker = ticker
         self.timestamp = datetime.now()
         self.momentum = None
