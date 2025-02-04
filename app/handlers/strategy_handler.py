@@ -39,6 +39,7 @@ class StrategyHandler():
                 # logger.info(f"Backtest data for {ticker}: {ticker_data.head()}")
             else:
                 ticker_data = get_ticker_data(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path)    
+                logger.debug('most recent ticker {} timestamp: {}'.format(ticker, ticker_data['timestamp'].iloc[-1]))
             connection.close()
             for strategy in self.strategies.values():
                 if ticker_data.empty:
