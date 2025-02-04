@@ -1,10 +1,12 @@
+import asyncio
 import logging
+import time
 import duckdb
 from datetime import datetime, timedelta
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.live import StockDataStream
 from alpaca.data.enums import DataFeed
-from alpaca.data import StockBarsRequest
+from alpaca.data import StockBarsRequest, Bar
 from alpaca.data import TimeFrame
 
 logger = logging.getLogger("app")
@@ -115,16 +117,21 @@ class DataHandler():
             data[ticker] = ticker_data
         return data
     
-    async def handle_stream_data(self, bar_data):
-        for key, val in bar_data.items():
-            if key not in self.tickers:
-                continue
-            else:
-                logger.info(f"Received data for {key}: {val}")
-                value_str = f"('{val.timestamp}', '{key}', {val.open}, {val.high}, {val.low}, {val.close}, {val.volume}, {val.vwap})"
-                
-                self.save_streaming_ticker_data_to_db(key, value_str)
-                
+    async def handle_stream_bar_data(self, bar: Bar):
+        """
+        Process incoming bar and update ticker_data OHLC
+        """
+        symbol = bar.symbol
+        timestamp = bar.timestamp
+
+        # Skip if the symbol is not tracked
+        if symbol not in self.tickers:
+            return
+        else:
+            logger.info('received bar for {}: {}'.format(symbol, timestamp))
+
+        value_str = f"('{timestamp}', '{symbol}', {bar.open}, {bar.high}, {bar.low}, {bar.close}, {bar.volume}, {bar.vwap})"
+        self.save_to_db(symbol, [value_str])
 
     def save_market_data(self, data: dict):
         for ticker in data.keys():
@@ -138,22 +145,53 @@ class DataHandler():
             
             logger.info('Data saved for ticker {}'.format(ticker))
 
-    def save_to_db(self, ticker, value_strs):
-        value_str = ", ".join(value_strs)
+    def save_to_db(self, ticker, value_strs, retries=1):
+        if len(value_strs) == 1:
+            value_str = value_strs[0]
+        else:
+            value_str = ", ".join(value_strs)
         db_path = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"
         conn = duckdb.connect(db_path)
-        conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
-        conn.close()
+        should_retry = False
+        try:
+            conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
+        except Exception as e:
+            if retries > 0:
+                should_retry = True
+            else:
+                logger.error(f"Error saving data to database: {e}")
+        finally:
+            conn.close()
+            if should_retry:
+                time.sleep(1)
+                logger.info(f"Retrying save to db for {ticker}")
+                self.save_to_db(ticker, value_strs, retries=retries-1)
 
-    def save_streaming_ticker_data_to_db(self, ticker, value_str):
-        conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
-        conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {value_str}")
-        conn.close()
+
+    def shutdown(self):
+        if self.is_stream_subscribed:
+            self.stream_task.cancel()
+            self.is_stream_subscribed = False
+            logger.info("Unsubscribed from data stream")
 
     async def subscribe_to_data_stream(self):
+        """Start the Alpaca WebSocket data stream asynchronously inside FastAPI's event loop."""
         stream = StockDataStream(api_key=self.api_key, secret_key=self.api_secret, feed=DataFeed.IEX)
 
-        stream.subscribe_quotes(self.handle_stream_data, *self.tickers)
-        stream.run()
+        # Subscribe to real-time quote updates
+        stream.subscribe_bars(self.handle_stream_bar_data, *self.tickers)
+
+        # Create an asyncio task instead of calling `stream.run()`
+        loop = asyncio.get_running_loop()
+        self.stream_task = loop.create_task(self._run_stream(stream))
+
         self.is_stream_subscribed = True
         logger.info('Subscribed to data stream')
+
+    async def _run_stream(self, stream):
+        """Run the Alpaca WebSocket stream safely inside FastAPI's event loop."""
+        try:
+            logger.info("Starting Alpaca WebSocket stream...")
+            await stream._run_forever()
+        except Exception as e:
+            logger.error(f"Alpaca WebSocket stream error: {e}")
