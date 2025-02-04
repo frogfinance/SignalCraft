@@ -24,6 +24,8 @@ async def lifespan(app: FastAPI):
         # Perform cleanup
         logging.info("Shutting down background tasks...")
         trader_task.cancel()  # Cancel the background trading task
+        if trading_system.data_handler is not None:
+            trading_system.data_handler.shutdown()
         try:
             await trader_task
         except asyncio.CancelledError:
