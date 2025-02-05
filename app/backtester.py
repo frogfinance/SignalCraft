@@ -31,6 +31,7 @@ class BacktestingSystem():
 
     async def run_backtest(self, start_candle_index=3090):
         logger.info("AlgoTrader BacktestingSystem fetching backtest data")
+        self.data_handler.fetch_data(use_most_recent=True)
         backtest_data = self.data_handler.get_backtest_data()
         backtest_ticker_data = backtest_data[self.tickers[0]]
         # the backtest start candle timestamp is the second candle in the backtest data
