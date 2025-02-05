@@ -131,6 +131,7 @@ class DataHandler():
             logger.info('received bar for {}: {}'.format(symbol, timestamp))
 
         value_str = f"('{timestamp}', '{symbol}', {bar.open}, {bar.high}, {bar.low}, {bar.close}, {bar.volume}, {bar.vwap})"
+        logger.info('saving values for {} @ {}'.format(symbol, timestamp))
         self.save_to_db(symbol, [value_str])
 
     def save_market_data(self, data: dict):
