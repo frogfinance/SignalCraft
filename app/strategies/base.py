@@ -35,11 +35,18 @@ def get_ticker_data(ticker, connection, timeframe=TimeFrame.Minute, db_base_path
     # Query the minute-level data
     query = f"SELECT * FROM ticker_data ORDER BY timestamp ASC"
     try:
+        logger.debug(f"Connecting to database: {connection_str}")
         data = connection.sql(query).df()  # Convert to Pandas DataFrame
     except Exception as e:
         connection.close()
-        connection = duckdb.connect(f"{db_base_path}/{ticker}_{timeframe}_data.db")
-        data = connection.sql(query).df()
+        connection_str = f"{db_base_path}/{ticker}_{timeframe}_data.db"
+        logger.debug(f"Reconnecting to database: {connection_str}")
+        try:
+            connection = duckdb.connect(connection_str)
+            data = connection.sql(query).df()
+        except Exception as e:
+            logger.error(f"Error fetching duckdb database. This is usually due to a missing data file for a ticker. Run create_and_seed_db.py to build new ticker databases. data={connection_str} msg={e}")
+            raise e
     return data
 
 
