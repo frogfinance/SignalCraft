@@ -312,7 +312,7 @@ class PositionManager:
                 logger.info(f"Total Exposure: {total_exposure:.1%}")
                 for pos in active_positions.values():
                     exposure = pos.get_exposure(account['equity'])
-                    logger.info("%r (%.1f%% exposure)", pos, exposure)
+                    logger.info("%r (%.1f%% exposure)", pos.__str__(), exposure)
                 
                 if self.pending_closes:
                     logger.info("\nPending Close Orders:")
