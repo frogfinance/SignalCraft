@@ -31,49 +31,70 @@ class TrendFollowingStrategy(BaseStrategy):
         aggregated.reset_index(inplace=True)
         return aggregated
 
-    def detect_trend(self, data: pd.DataFrame) -> Optional[str]:
-        """Detect uptrend or downtrend based on higher highs and lower lows."""
-        if len(data) < self.trend_confirmation_candles:
+    def detect_trend(self, data: pd.DataFrame) -> Optional[Dict[str, any]]:
+        """
+        Detect uptrend by looking back across the last 200 candles.
+        Returns a dictionary with:
+        - 'trend': 'uptrend' or None
+        - 'demand_zone': {'low': float, 'high': float} (range of the higher low candle)
+        - 'previous_high': float (previous high before the higher low)
+        """
+        if len(data) < 200:
             return None
 
         highs = data['high'].values
         lows = data['low'].values
 
-        # Check for uptrend (higher highs)
-        uptrend = all(highs[-i] > highs[-(i + 1)] for i in range(1, self.trend_confirmation_candles))
+        # Look for higher highs followed by a higher low
+        higher_highs = []
+        higher_lows = []
 
-        # Check for downtrend (lower lows)
-        downtrend = all(lows[-i] < lows[-(i + 1)] for i in range(1, self.trend_confirmation_candles))
+        for i in range(len(data) - 1):
+            if highs[i] > highs[i - 1]:
+                higher_highs.append(i)
+            if lows[i] > lows[i - 1]:
+                higher_lows.append(i)
 
-        if uptrend:
-            return "uptrend"
-        elif downtrend:
-            return "downtrend"
-        else:
-            return None
+        # Check if the last candle is a breakout from the higher low
+        if len(higher_highs) > 0 and len(higher_lows) > 0:
+            # Find the most recent higher low
+            higher_low_index = higher_lows[-1]
 
-    def find_demand_level(self, data: pd.DataFrame) -> float:
-        """Find the demand level (low of the candle before the start of the uptrend)."""
-        if len(data) < 2:
-            return data['low'].iloc[-1]
+            # Ensure the higher low is after the last higher high
+            if higher_low_index > higher_highs[-1]:
+                # Check if the last candle is a breakout (closes above the higher low candle's high)
+                breakout_candle = data.iloc[-1]
+                higher_low_candle = data.iloc[higher_low_index]
 
-        return data['low'].iloc[-2]
+                if breakout_candle['close'] > higher_low_candle['high']:
+                    # Define the demand zone as the range of the higher low candle
+                    demand_zone = {
+                        "low": higher_low_candle['low'],
+                        "high": higher_low_candle['high']
+                    }
+
+                    # Find the previous high before the higher low
+                    previous_high = max(highs[higher_highs[-1]:higher_low_index])
+
+                    return {
+                        "trend": "uptrend",
+                        "demand_zone": demand_zone,
+                        "previous_high": previous_high
+                    }
+
+        return None
 
     def generate_signal(self, ticker, data: pd.DataFrame) -> Signal:
-        """Generate buy/sell signals based on trend detection."""
+        """Generate buy/sell signals based on trend detection and demand zone."""
         if data.empty:
             logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
-            return Signal(strategy="trend_following", ticker=ticker)
-
-        # Only run strategy on 15-minute intervals
-        if data.iloc[-1]['timestamp'].minute % 15 != 0:
             return Signal(strategy="trend_following", ticker=ticker)
 
         # Resample data into 15-minute intervals
         data = self.resample_data(data, interval="15min")
 
         # Ensure enough historical data for trend analysis
-        if data.shape[0] < self.lookback:
+        if data.shape[0] < 200:
             return Signal(strategy="trend_following", ticker=ticker)
 
         # Get the most recent price
@@ -83,26 +104,24 @@ class TrendFollowingStrategy(BaseStrategy):
         signal = Signal(strategy="trend_following", ticker=ticker, price=current_price)
 
         # Detect the current trend
-        trend = self.detect_trend(data)
+        trend_info = self.detect_trend(data)
 
-        if trend == "uptrend":
-            # Find the demand level (low of the candle before the start of the uptrend)
-            demand_level = self.find_demand_level(data)
+        if trend_info and trend_info["trend"] == "uptrend":
+            demand_zone = trend_info["demand_zone"]
+            previous_high = trend_info["previous_high"]
 
-            # Set buy order at the demand level
-            if current_price >= demand_level:
+            # Set buy order at the demand zone high (breakout level)
+            if current_price >= demand_zone["high"]:
                 signal.buy()
-                signal.reason = f"Uptrend detected. Buy at demand level: {demand_level:.2f}"
+                signal.reason = f"Uptrend detected. Buy at demand zone: {demand_zone['low']:.2f} - {demand_zone['high']:.2f}"
 
-                # Set stop loss and take profit levels
-                stop_loss = demand_level * (1 - self.stop_loss_multiplier)
-                take_profit = data['high'].iloc[-1] * (1 + self.take_profit_multiplier)
+                # Set stop loss within the demand zone
+                stop_loss = demand_zone["low"] * (1 - self.stop_loss_multiplier)
+
+                # Set take profit at the previous high
+                take_profit = previous_high
 
                 signal.stop_loss = stop_loss
                 signal.take_profit = take_profit
-
-        elif trend == "downtrend":
-            # For downtrends, implement a similar logic for sell/short signals
-            pass
 
         return signal
