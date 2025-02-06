@@ -41,13 +41,17 @@ class DataHandler():
             # find the most recent candle timestart as `start``
             oldest_candle = None
             for ticker in self.tickers:
-                
-                connection = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+                conn_str = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"
+                connection = duckdb.connect(conn_str)
                 # get most recent candle from the db
-                most_recent_candle_data = connection.sql(
-                    f"SELECT * FROM ticker_data ORDER BY timestamp DESC LIMIT 1"
-                ).df()
-                connection.close()
+                try:
+                    most_recent_candle_data = connection.sql(
+                        f"SELECT * FROM ticker_data ORDER BY timestamp DESC LIMIT 1"
+                    ).df()
+                except Exception as e:
+                    logger.exception("Error fetching most recent candle data. ticker=%r conn_string=%r", ticker, conn_str, exc_info=e)
+                finally:
+                    connection.close()
                 last_candle = most_recent_candle_data["timestamp"].iloc[0] if not most_recent_candle_data.empty else None
                 if oldest_candle and last_candle and last_candle < oldest_candle:
                     oldest_candle = last_candle
