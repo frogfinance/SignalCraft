@@ -45,7 +45,7 @@ class PositionManager:
         price = float(price)
         account = self.get_account_info()
         equity = account['equity']
-        logger.debug(f'calculating target position for {ticker} with equity {equity} at price {price} and side {side}')
+        logger.debug('calculating target position for %r with equity %r at price %r and side %r', ticker, equity, price, side)
         
         # Calculate current total exposure excluding pending closes
         active_positions = {s: p for s, p in self.positions.items() 
@@ -55,7 +55,7 @@ class PositionManager:
         if side == OrderSide.BUY:
             # Check if we're already at max exposure
             if total_exposure >= self.max_total_exposure:
-                logger.debug(f"Maximum total exposure reached: {total_exposure:.1%}")
+                logger.debug("Maximum total exposure reached: %d", total_exposure)
                 return 0, False
         
         # Use provided target_pct or default max_position_size
@@ -70,12 +70,12 @@ class PositionManager:
                 
                 # Don't add if already at target size
                 if side == OrderSide.BUY and current_exposure >= position_size:
-                    logger.debug(f"Target position size reached for {ticker}: {current_exposure:.1%}")
+                    logger.debug("Target position size reached for %r (%.1f%% exposure)", ticker, current_exposure)
                     return 0, False
                 
                 # Don't add if position moving against us
                 if current_position.pl_pct < -0.02:  # -2% loss threshold
-                    logger.info(f"Position moving against us: {current_position.pl_pct:.1%} P&L")
+                    logger.info("Position moving against us: %.1f%% P&L", current_position.pl_pct)
                     logger.info("MAYBE WE SHOULD SELL!!!")
                     return 0, False
                 
@@ -86,11 +86,10 @@ class PositionManager:
             else:
                 # New position - use full target size
                 target_shares = int(target_position_value / price)
-                logger.debug(f"New {position_size:.1%} position: {target_shares} shares @ ${price:.2f}")
+                logger.debug("New %.1f%% position: %d shares @ $%.2f", position_size, target_shares, price)
                 return target_shares, True
         except Exception as e:
-            logger.info("Error calculating target position {}@{}".format(ticker, price))
-            logger.info(f"Error calculating target position: {str(e)}")
+            logger.info("Error calculating target position %r", ticker, exc_info=e)
             return 0, False
 
     def check_position_available(self, ticker):
@@ -107,11 +106,11 @@ class PositionManager:
                         return False
                     return True
                     
-            logger.debug(f"Position not found: {ticker}")
+            logger.debug("Position not found: %r", ticker)
             return False
             
         except Exception as e:
-            logger.error(f"Error checking position {ticker}: {str(e)}")
+            logger.error("Error checking position %r", ticker, exc_info=e)
             return False
     
     def check_positions(self, ticker_to_price_map):
@@ -127,7 +126,7 @@ class PositionManager:
             return self.close_position_backtest(ticker, signal)
         # Skip if already pending close or shares held
         if ticker in self.pending_closes:
-            logger.debug(f"Skipping {ticker} - close order already pending")
+            logger.debug("Skipping %r - close order already pending", ticker)
             return None
         
         if not self.check_position_available(ticker):
@@ -137,13 +136,13 @@ class PositionManager:
             order = self.trading_client.close_position(ticker)
             if order.status == 'accepted':
                 self.pending_closes.add(ticker)
-                logger.debug(f"Close order queued: {ticker}")
+                logger.debug("Close order queued: %r", ticker)
                 return order
                 
         except Exception as e:
-            logger.info(f"\nError closing position in {ticker}:")
-            logger.info(f"Error type: {type(e).__name__}")
-            logger.info(f"Error message: {str(e)}")
+            logger.info("\nError closing position in %r:", ticker)
+            logger.info("Error type: %r", type(e).__name__)
+            logger.info("Error message: %r", str(e))
             return None
 
     def close_position_backtest(self, ticker, signal):
@@ -231,7 +230,7 @@ class PositionManager:
         
         if reasons:
             reason_str = ", ".join(reasons)
-            logger.debug(f"Closing {ticker} due to: {reason_str}")
+            logger.debug("Closing %r due to: %r", ticker, reason_str)
             return True
             
         return False
@@ -262,7 +261,7 @@ class PositionManager:
                     })
                     
         except Exception as e:
-            logger.info(f"Error updating orders: {str(e)}")
+            logger.info("Error updating orders: %r", str(e))
 
 
     def update_positions(self, order=None, show_status=True):
@@ -313,22 +312,22 @@ class PositionManager:
                 logger.info(f"Total Exposure: {total_exposure:.1%}")
                 for pos in active_positions.values():
                     exposure = pos.get_exposure(account['equity'])
-                    logger.info(f"{pos} ({exposure:.1%} exposure)")
+                    logger.info("%r (%.1f%% exposure)", pos, exposure)
                 
                 if self.pending_closes:
                     logger.info("\nPending Close Orders:")
                     for ticker in self.pending_closes:
-                        logger.info(f"- {ticker}")
+                        logger.info("- %r", ticker)
                 
                 if self.pending_orders:
                     logger.info("\nPending New Orders:")
                     for order in self.pending_orders:
-                        logger.info(f"- {order['ticker']} ({order['side']})")
+                        logger.info("- %r (%r)", order['ticker'], order['side'])
                 
             return self.positions
             
         except Exception as e:
-            logger.info(f"Error updating positions: {str(e)}")
+            logger.info("Error updating positions: %r", str(e))
             return {}
     
     def update_positions_backtest(self, order, show_status=False):
@@ -375,10 +374,10 @@ class PositionManager:
 
         self.equity = self.cash_balance + self.unrealized_pnl
         if timestamp.minute % 15 == 0:
-            logger.info(f"Backtest Portfolio Status {timestamp}:")
-            logger.info(f"Cash Balance: ${self.cash_balance:.2f}")
-            logger.info(f"Equity: ${self.equity:.2f}")
-            logger.info(f"Unrealized P&L: ${self.unrealized_pnl:.2f}")
+            logger.info("Backtest Portfolio Status %r: ", timestamp)
+            logger.info("Cash Balance: $%.2f", self.cash_balance)
+            logger.info("Equity: $%.2f", self.equity)
+            logger.info("Unrealized P&L: $%.2f", self.unrealized_pnl)
             open_positions = {s: p for s, p in self.positions.items() if p is not None and p.is_open}
             for ticker, position in open_positions.items():
-                logger.info(f"{ticker}: {position}")
+                logger.info("%r: %r shares @ $%.2f", ticker, position.qty, position.entry_price)

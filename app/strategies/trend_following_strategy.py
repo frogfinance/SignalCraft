@@ -65,6 +65,10 @@ class TrendFollowingStrategy(BaseStrategy):
             logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
             return Signal(strategy="trend_following", ticker=ticker)
 
+        # Only run strategy on 15-minute intervals
+        if data.iloc[-1]['timestamp'].minute % 15 != 0:
+            return Signal(strategy="trend_following", ticker=ticker)
+
         # Resample data into 15-minute intervals
         data = self.resample_data(data, interval="15min")
 

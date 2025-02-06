@@ -33,19 +33,20 @@ class BaseStrategy:
 
 def get_ticker_data(ticker, connection, timeframe=TimeFrame.Minute, db_base_path='dbs'):
     # Query the minute-level data
+    connection_str = f"{db_base_path}/{ticker}_{timeframe}_data.db"
     query = f"SELECT * FROM ticker_data ORDER BY timestamp ASC"
     try:
-        logger.debug(f"Connecting to database: {connection_str}")
+        logger.debug("Connecting to database: %r", connection_str)
         data = connection.sql(query).df()  # Convert to Pandas DataFrame
     except Exception as e:
         connection.close()
         connection_str = f"{db_base_path}/{ticker}_{timeframe}_data.db"
-        logger.debug(f"Reconnecting to database: {connection_str}")
+        logger.debug("Reconnecting to database: %r", connection_str)
         try:
             connection = duckdb.connect(connection_str)
             data = connection.sql(query).df()
         except Exception as e:
-            logger.error(f"Error fetching duckdb database. This is usually due to a missing data file for a ticker. Run create_and_seed_db.py to build new ticker databases. data={connection_str} msg={e}")
+            logger.error("Error fetching duckdb database. This is usually due to a missing data file for a ticker. Run create_and_seed_db.py to build new ticker databases. data=%r", connection_str, exc_info=e)
             raise e
     return data
 
@@ -68,7 +69,7 @@ def get_ticker_data_by_timeframe(ticker, connection, timeframe=TimeFrame.Minute,
         data = connection.sql(query).df()  # Convert to Pandas DataFrame
     except Exception as e:
         connection.close()
-        logger.error(f"Error fetching data: {e}")
+        logger.error("Error fetching data", exc_info=e)
         connection = duckdb.connect(f"{db_base_path}/{ticker}_{timeframe}_data.db")
         data = connection.sql(query).df()
     

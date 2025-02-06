@@ -43,7 +43,7 @@ class BacktestingSystem():
         # get all timestamps for the backtest data ordered by eldest to youngest
         logger.info("AlgoTrader BacktestingSystem begin backtest & signal generation")
         while candle_index <= total_number_candles:
-            logger.debug(f"Running backtest for candle {candle_index}/{total_number_candles}")
+            logger.debug("Running backtest for candle %r / %r", candle_index, total_number_candles)
             backtest_data['end'] = backtest_ticker_data['timestamp'].iloc[candle_index]
             candle_index += 1
             # check if candle data is within market open hours
@@ -54,10 +54,10 @@ class BacktestingSystem():
                 outcome = self.execution_handler.run_backtest_trade(signal)
                 if outcome is not None:
                     self.trade_results.append(outcome)
-                    logger.info(f"Trade outcome: {outcome}")
+                    logger.info("Trade outcome: %r", outcome)
             if candle_index % 5 == 0:
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
             await asyncio.sleep(0)
-        logger.info("Position Manager stats: {}".format(self.execution_handler.position_manager.stats()))
-        logger.info("Backtest completed. Results: {}".format(self.trade_results))
+        logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
+        logger.info("Backtest completed. Results: %r", self.trade_results)

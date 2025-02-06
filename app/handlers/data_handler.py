@@ -64,7 +64,7 @@ class DataHandler():
             curr_start = start
             curr_end = start + timedelta(days=1)
             while curr_start <= end:
-                logger.info(f"Fetching data for tickers from {curr_start} to {curr_end}")
+                logger.info("Fetching data for tickers from %r to %r", curr_start, curr_end)
                 data = None
                 request = StockBarsRequest(
                     symbol_or_symbols=self.tickers,
@@ -75,18 +75,18 @@ class DataHandler():
                 try:
                     data = self.data_store.get_stock_bars(request)
                 except Exception as e:
-                    logger.error(f"Error fetching market data for ticker:{ticker} error; {e}")
+                    logger.error("Error fetching market data for ticker: %r", ticker, exc_info=e)
                 
                 if data is None or data.data is None:
                     logger.info("No data received", data)
                 else:    
-                    logger.info(f"Data received for {ticker} from {curr_start} to {curr_end}")
+                    logger.info("Data received for %r from %r to $r", ticker, curr_start, curr_end)
                     self.save_market_data(data.data)
                 logger.info(f"Data saved for tickers")
                 curr_start = curr_end
                 curr_end = curr_start + timedelta(days=1)
         except Exception as e:
-            logger.error(f"Error fetching market data: {e}")
+            logger.error("Error fetching market data", exc_info=e)
             return None
         
     def fetch_most_recent_prices(self):
@@ -107,7 +107,7 @@ class DataHandler():
                     ticker_to_price_map[ticker] = price
 
         except Exception as e:
-            logger.error(f"Error fetching most recent prices: {e}")
+            logger.error("Error fetching most recent prices", exc_info=e)
             return None
         
         return ticker_to_price_map
@@ -135,7 +135,7 @@ class DataHandler():
             logger.info('received bar for {}: {}'.format(symbol, timestamp))
 
         value_str = f"('{timestamp}', '{symbol}', {bar.open}, {bar.high}, {bar.low}, {bar.close}, {bar.volume}, {bar.vwap})"
-        logger.info('saving values for {} @ {}'.format(symbol, timestamp))
+        logger.info('saving values for %r @ %r', symbol, timestamp)
         self.save_to_db(symbol, [value_str])
 
     def save_market_data(self, data: dict):
@@ -144,11 +144,11 @@ class DataHandler():
             value_strs = []
             for row in ticker_data:
                 value_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
-                logger.debug(f"candle values for {ticker}: {value_str}")
+                logger.debug("candle values for %r: %r", ticker, value_str)
                 value_strs.append(value_str)
             self.save_to_db(ticker, value_strs)
             
-            logger.info('Data saved for ticker {}'.format(ticker))
+            logger.info('Data saved for ticker %r', ticker)
 
     def save_to_db(self, ticker, value_strs, retries=1):
         if len(value_strs) == 1:
@@ -169,7 +169,7 @@ class DataHandler():
             conn.close()
             if should_retry:
                 time.sleep(1)
-                logger.info(f"Retrying save to db for {ticker}")
+                logger.info("Retrying save to db for %r", ticker)
                 self.save_to_db(ticker, value_strs, retries=retries-1)
 
 
@@ -199,4 +199,4 @@ class DataHandler():
             logger.info("Starting Alpaca WebSocket stream...")
             await stream._run_forever()
         except Exception as e:
-            logger.error(f"Alpaca WebSocket stream error: {e}")
+            logger.error("Alpaca WebSocket stream error", exc_info=e)

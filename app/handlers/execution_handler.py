@@ -33,7 +33,7 @@ class ExecutionHandler():
             order = self.submit_order(order_request)
             logger.info("Order submitted: {}".format(order))
             if order.filled_at is None:
-                logger.info(f"Order for {signal.ticker} is still open.")
+                logger.info("Order for %r is still open.", signal.ticker)
                 trade_timestamp = order.submitted_at
             else:
                 trade_timestamp = order.filled_at
@@ -65,14 +65,14 @@ class ExecutionHandler():
             else:
                 should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
                 if should_close_position:
-                    logger.info("Detected signal to close position for {}".format(signal.ticker))
+                    logger.info("Detected signal to close position for %r", signal.ticker)
                     order_request = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
                     order = submit_and_handle_order(order_request)
                 else:
-                    logger.info("Trade for {} not executed signal_data={}".format(signal.ticker, signal))
+                    logger.info("Trade for %r not executed signal_data=%r", signal.ticker, signal)
         except Exception as e:
-            logger.error(f"Error executing trade for {signal.ticker}: {e}")
-            logger.info(f"Signal from: symbol={signal.ticker} qty={qty} side={signal.side} price={signal.price}")
+            logger.error(f"Error executing trade for %r", signal.ticker, exc_info=e)
+            logger.info("Signal from: symbol=%r qty=%r side=%r price=%r", signal.ticker, qty, signal.side, signal.price)
             return None
         return order
     
@@ -108,29 +108,29 @@ class ExecutionHandler():
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
         should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
         if should_close_position is True:
-            logger.info("Detected signal to close position for {}".format(signal.ticker))
+            logger.info("Detected signal to close position for %r"< signal.ticker)
             order['qty'] = self.position_manager.positions[signal.ticker].qty
             order['side'] = OrderSide.SELL
             order_generated = True
         elif qty <= 0:
-            logger.debug(f"Trade for {signal.ticker} not executed, qty={qty}")
+            logger.debug("Trade for %r not executed, qty=%r", signal.ticker, qty)
             order_generated = False
         elif signal.action == 'buy':
-            logger.debug(f'Buy signal detected for {signal.ticker}')
+            logger.debug('Buy signal detected for %r', signal.ticker)
             if is_good_trade:
                 order['qty'] = qty
                 order['side'] = OrderSide.BUY
-                logger.debug(f'Buy order generated for {signal.ticker} qty={qty} price={signal.price}')
+                logger.debug('Buy order generated for %r qty=%r price=%r', signal.ticker, qty, signal.price)
                 order_generated = True
         elif signal.action == 'sell':
             if is_good_trade:
                 order['side'] = OrderSide.SELL
                 order['qty'] = qty
-                logger.debug(f'Sell order generated for {signal.ticker} qty={qty} price={signal.price}')
+                logger.debug('Sell order generated for %r qty=%r price=%r', signal.ticker, qty, signal.price)
                 order_generated = True
         
         if order_generated:
-            logger.debug('Order generated for ticker {} with signal {}'.format(order['ticker'], signal))
+            logger.debug('Order generated for ticker %r: %r', signal.ticker, order)
             self.position_manager.update_positions_backtest(order, show_status=False)
             return order
         else:
@@ -143,7 +143,7 @@ class ExecutionHandler():
         conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
         conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}', '{order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price if order.filled_avg_price is not None else 0}, '{order.client_order_id}', '{signal.strategy}', '{signal.reason}')")
         conn.close()
-        logger.debug('Trade saved for ticker: {}'.format(order.symbol))
+        logger.debug('Trade saved for ticker: %r', order.symbol)
 
     def submit_order(self, order_request):
         """this function exists to mock the order submission"""

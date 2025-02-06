@@ -45,12 +45,12 @@ class MarketProfileStrategy(BaseStrategy):
     def generate_signal(self, ticker, data: pd.DataFrame) -> Signal:
         """Generate buy/sell signals based on market profile and technical indicators."""
         price = data.iloc[-1]['close']
-        logger.debug(f"Generating signal for {ticker} price={price}")
+        logger.debug("Generating signal for %r price=%r", ticker, price)
         if price is None or price == 0:
             return Signal(strategy=self.name, ticker=ticker)
         signal = Signal(strategy='market_profile', ticker=ticker, price=price)
         if data.empty:
-            logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
+            logger.debug("No data available for ticker %r. Skipping signal generation.", ticker)
             return signal
         
         timestamp = data['timestamp'].iloc[-1]

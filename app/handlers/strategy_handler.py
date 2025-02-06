@@ -8,6 +8,8 @@ from app.strategies.markov_prediction_strategy import MarkovPredictionStrategy
 from app.strategies.support_resistance_strategy import SupportResistanceStrategy
 from alpaca.data import TimeFrame
 
+from app.strategies.trend_following_strategy import TrendFollowingStrategy
+
 logger = logging.getLogger("app")
 
 
@@ -20,6 +22,7 @@ class StrategyHandler():
         self.markov_prediction = MarkovPredictionStrategy(db_base_path=self.db_base_path)
         self.market_profile_strategy = MarketProfileStrategy(timeframe=self.timeframe)
         self.support_resistance_strategy = SupportResistanceStrategy()
+        self.trend_following_strategy = TrendFollowingStrategy()
         self.strategies = {
             'support_resistance': self.support_resistance_strategy,
             # 'markov': self.markov_prediction,
@@ -34,19 +37,19 @@ class StrategyHandler():
                 continue
             connection = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
             if is_backtest:
-                logger.debug("get backtest data: {}".format(backtest_data.get('end')))
+                logger.debug("get backtest data: %r", backtest_data.get('end'))
                 ticker_data = get_ticker_data_by_timeframe(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path, end=backtest_data['end'])
                 # logger.info(f"Backtest data for {ticker}: {ticker_data.head()}")
             else:
                 ticker_data = get_ticker_data(ticker, connection, timeframe=self.timeframe, db_base_path=self.db_base_path)    
-                logger.debug('most recent ticker {} timestamp: {}'.format(ticker, ticker_data['timestamp'].iloc[-1]))
+                logger.debug('most recent ticker %r timestamp: %r', ticker, ticker_data['timestamp'].iloc[-1])
             connection.close()
             for strategy in self.strategies.values():
                 if ticker_data.empty:
                     continue
                 signal: Signal = strategy.generate_signal(ticker, ticker_data)
                 if signal is not None and signal.action is not None:
-                    logger.debug(f"Signal generated for {ticker}: {signal}")
+                    logger.debug("Signal generated for %r: %r", ticker, signal)
                     signal_data[ticker] = signal
             
         return signal_data

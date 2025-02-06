@@ -47,7 +47,7 @@ class SupportResistanceStrategy(BaseStrategy):
     def generate_signal(self, ticker, data: pd.DataFrame) -> Signal:
         """Generate buy/sell signals based on support and resistance levels."""
         if data.empty:
-            logger.debug(f"No data available for ticker {ticker}. Skipping signal generation.")
+            logger.debug("No data available for ticker %r. Skipping signal generation.", ticker)
             return Signal(strategy="support_resistance", ticker=ticker)
         
         # Get the most recent price
@@ -64,10 +64,10 @@ class SupportResistanceStrategy(BaseStrategy):
                 timestamp = timestamp.tz_localize('UTC')
 
             timestamp = timestamp.tz_convert('US/Pacific')
-            logger.debug(f'Skipping signal generation for {ticker} at {timestamp}')
+            logger.debug('Skipping signal generation for %r at %r', ticker, timestamp)
             return signal
         else:
-            logger.debug(f"Generating signal for {ticker} at {timestamp}")
+            logger.debug(f"Generating signal for %r at %r", ticker, timestamp)
         
         # Resample data into 15-minute intervals
         data = self.resample_data(data, interval="15min")

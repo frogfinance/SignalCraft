@@ -30,16 +30,16 @@ class MarkovPredictionStrategy(BaseStrategy):
         price = data.iloc[-1]['close']
         last_close = data['close'].iloc[-1]
         last_candle_data = data.iloc[-1]
-        logger.debug("Price: {}".format(price))
-        logger.debug(f"Last close price: {last_close}")
-        logger.debug(f"Last candle data: {last_candle_data}")
-        logger.debug(f"Generating signal for {ticker} price={price}")
+        logger.debug("Price: %d", price)
+        logger.debug("Last close price: %d", last_close)
+        logger.debug("Last candle data: %r", last_candle_data)
+        logger.debug("Generating signal for %r price=%d", ticker, price)
         if price is None or price == 0:
             return Signal(strategy=self.name, ticker=ticker)
         signal = Signal(strategy=self.name, ticker=ticker, price=price)
-        logger.debug(f"Signal: {signal}")
+        logger.debug("Signal: %r", signal)
         if data.empty:
-            logger.warning(f"No data available for ticker {ticker}. Skipping signal generation.")
+            logger.warning("No data available for ticker %r. Skipping signal generation.", ticker)
             return signal
         # Ensure the timestamp aligns with 15-minute intervals and there are enough data points
         timestamp = data['timestamp'].iloc[-1]
@@ -48,9 +48,9 @@ class MarkovPredictionStrategy(BaseStrategy):
             return signal
         try:
             current_close, predicted_close = self.make_prediction(data)
-            logger.debug(f"Predicted close price for {ticker}: {current_close} -> {predicted_close}")
+            logger.debug("Predicted close price for %r: %d -> %d", ticker, current_close, predicted_close)
         except ValueError as e:
-            logger.error(f"Failed to make prediction for {ticker}: {e}")
+            logger.error("Failed to make prediction for %r", exc_info=e)
             return signal
         if predicted_close > current_close * 1.01:
             signal.buy()
@@ -59,7 +59,7 @@ class MarkovPredictionStrategy(BaseStrategy):
             signal.sell()
             signal.reason = 'Predicted close is significantly lower than current close'
 
-        logger.debug(f"Signal generated for {ticker}: {signal}")
+        logger.debug("Signal generated for %r: %r", ticker, signal)
         return signal
 
     def make_prediction(self, ticker_data, interval="60min", n_simulations=5000):
@@ -77,25 +77,25 @@ class MarkovPredictionStrategy(BaseStrategy):
         """
         # Fetch and preprocess VXX data
         vxx_data = self.fetch_vxx_data(end=ticker_data['timestamp'].iloc[-1])
-        logger.debug(f"VXX data: {vxx_data.head()}")
+        logger.debug("VXX data: %r", vxx_data.head())
         ticker_data = pd.merge(ticker_data, vxx_data, on='timestamp', how='outer').sort_values(by='timestamp')
         ticker_data.infer_objects(copy=False)
         ticker_data.interpolate(method='linear', inplace=True)
         ticker_data.dropna(inplace=True)
-        logger.debug(f"Merged data: {ticker_data.head()}")
+        logger.debug("Merged data: %r", ticker_data.head())
 
         # Resample data
         ticker_data = self.resample_data(ticker_data, interval=interval)
         if ticker_data.empty:
             raise ValueError(f"Resampled data is empty. Cannot make predictions for interval {interval}.")
 
-        logger.debug(f"Resampled data: {ticker_data.iloc[-1]}")
+        logger.debug("Resampled data: %r", ticker_data.iloc[-1])
         # Train Markov chain
         self.train_markov_chain(ticker_data)
         
         # Get the current state
         current_state = ticker_data[['close', 'volume', 'vwap', 'vxx']].values[-1]
-        logger.debug('Current state: {}'.format(current_state))
+        logger.debug('Current state: %r', current_state)
         # Simulate future states
         predictions = []
         for _ in range(n_simulations):
@@ -113,8 +113,8 @@ class MarkovPredictionStrategy(BaseStrategy):
 
         # Determine the most common predicted close price
         predicted_close = np.mean(predictions)  # Alternatively, use np.median or mode
-        logger.debug(f"Close price: {ticker_data['close'].iloc[-1]}")
-        logger.debug(f"Predicted close price: {predicted_close}")
+        logger.debug("Close price: %d", ticker_data['close'].iloc[-1])
+        logger.debug("Predicted close price: %d", predicted_close)
         current_close = ticker_data['close'].iloc[-1]
         return current_close, predicted_close
 
@@ -148,7 +148,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         return aggregated
 
     def train_markov_chain(self, data):
-        logger.debug(f"Training Markov chain with data: {data.head()}")
+        logger.debug("Training Markov chain with data: %r", data.head())
         # data = self.discretize_features(data)
         states = data[['close', 'volume', 'vwap', 'vxx']].values
         unique_states, indices = np.unique(states, axis=0, return_inverse=True)
