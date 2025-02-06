@@ -12,6 +12,8 @@ class Signal:
         self.timestamp = datetime.now()
         self.momentum = None
         self.score = None
+        self.stop_loss = None
+        self.take_profit = None
 
     def __str__(self):
         return f"Signal(action={self.action}, reason={self.reason}, strategy={self.strategy})"
