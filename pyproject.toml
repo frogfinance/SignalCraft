@@ -20,6 +20,7 @@ backtesting = "^0.3.3"
 uvicorn = {extras = ["standard"], version = "^0.34.0"}
 hmmlearn = "^0.3.3"
 pytz = "^2024.2"
+plotly = "^6.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
