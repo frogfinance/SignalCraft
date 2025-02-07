@@ -9,3 +9,5 @@ internal/
 .pytest_cache/
 exclude.txt
 *.code-workspace
+node_modules/
+app/static/css/output.css

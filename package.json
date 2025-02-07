@@ -1,0 +1,26 @@
+{
+  "name": "signalcraft",
+  "version": "1.0.0",
+  "description": "Algorithmic trading system with alpaca",
+  "main": "index.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/frogfinance/SignalCraft.git"
+  },
+  "author": "Aaron Gooch",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/frogfinance/SignalCraft/issues"
+  },
+  "homepage": "https://github.com/frogfinance/SignalCraft#readme",
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.0.4",
+    "tailwindcss": "^4.0.4"
+  }
+}
