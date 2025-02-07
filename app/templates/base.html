@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Dashboard for SignalCraft - Algorithmic Trading System.">
+    <meta property="og:title" content="SignalCraft Trading Dashboard">
+    <meta property="og:description" content="Dashboard for SignalCraft - Algorithmic Trading System.">
+    <meta property="og:image" content="{{ url_for('static', filename='logo.png') }}">
+    <meta property="og:url" content="https://signalcraft.frogfi.io">
+    <meta name="twitter:card" content="{{ url_for('static', filename='large-logo.png') }}">
+    <title>{% block title %}SignalCraft Trading Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/output.css') }}">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
+    <script src="{{ url_for('static', filename='js/index.js')}}" defer></script>
+    {% comment %} head block {% endcomment %}
+    {% block extra_head %}{% endblock %}
+    
+    {% comment %} css block {% endcomment %}
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="font-poppins">
+    <header>
+        <h1>{% block header %}Trading Dashboard{% endblock %}</h1>
+    </header>
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    <footer>
+        <p>&copy; {{ current_year }} SignalCraft Trading Dashboard. All rights reserved.</p>
+    </footer>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

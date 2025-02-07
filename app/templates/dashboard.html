@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="container mx-auto p-6">
+    <h2 class="text-2xl font-bold text-gray-200 mb-4">Account Information</h2>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-800 p-4 rounded-lg shadow-md">
+            <p class="text-gray-400">Balance</p>
+            <p class="text-xl font-semibold text-white">{{ account.balance }}</p>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg shadow-md">
+            <p class="text-gray-400">Equity</p>
+            <p class="text-xl font-semibold text-white">{{ account.equity }}</p>
+        </div>
+        <div class="bg-gray-800 p-4 rounded-lg shadow-md">
+            <p class="text-gray-400">Margin</p>
+            <p class="text-xl font-semibold text-white">{{ account.margin }}</p>
+        </div>
+    </div>
+
+    <h2 class="text-2xl font-bold text-gray-200 mt-8 mb-4">Open Positions</h2>
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-gray-900 text-white">
+            <thead>
+                <tr class="bg-gray-800 text-gray-300">
+                    <th class="py-3 px-4 text-left">Ticker</th>
+                    <th class="py-3 px-4 text-left">Quantity</th>
+                    <th class="py-3 px-4 text-left">Entry Price</th>
+                    <th class="py-3 px-4 text-left">Current Price</th>
+                    <th class="py-3 px-4 text-left">P&L</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for position in positions %}
+                <tr class="border-b border-gray-700">
+                    <td class="py-3 px-4">{{ position.ticker }}</td>
+                    <td class="py-3 px-4">{{ position.quantity }}</td>
+                    <td class="py-3 px-4">{{ position.entry_price }}</td>
+                    <td class="py-3 px-4">{{ position.current_price }}</td>
+                    <td class="py-3 px-4">{{ position.pnl }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-gray-200 mt-8 mb-4">Trade History</h2>
+    <div class="overflow-x-auto">
+        <table class="min-w-full bg-gray-900 text-white">
+            <thead>
+                <tr class="bg-gray-800 text-gray-300">
+                    <th class="py-3 px-4 text-left">Time</th>
+                    <th class="py-3 px-4 text-left">Ticker</th>
+                    <th class="py-3 px-4 text-left">Side</th>
+                    <th class="py-3 px-4 text-left">Price</th>
+                    <th class="py-3 px-4 text-left">Quantity</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in trades %}
+                <tr class="border-b border-gray-700">
+                    <td class="py-3 px-4">{{ trade.time }}</td>
+                    <td class="py-3 px-4">{{ trade.ticker }}</td>
+                    <td class="py-3 px-4">{{ trade.side }}</td>
+                    <td class="py-3 px-4">{{ trade.price }}</td>
+                    <td class="py-3 px-4">{{ trade.quantity }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="text-2xl font-bold text-gray-200 mt-8 mb-4">Stock Chart</h2>
+    <div class="chart-container bg-gray-800 p-4 rounded-lg shadow-md">
+        <iframe src="/chart/AAPL" width="100%" height="500px" frameborder="0"></iframe>
+    </div>
+</div>
+{% endblock %}
