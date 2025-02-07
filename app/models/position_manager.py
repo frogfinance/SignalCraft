@@ -1,6 +1,5 @@
 from alpaca.trading import TradingClient
-from alpaca.trading.enums import OrderSide, TimeInForce
-from alpaca.trading.requests import MarketOrderRequest
+from alpaca.trading.enums import OrderSide
 from datetime import datetime
 import logging
 from app.models.position import Position
