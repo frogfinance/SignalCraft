@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import asyncio, logging
 import logging.config
@@ -62,16 +62,20 @@ async def dashboard(request: Request):
     account_info = trading_system.execution_handler.position_manager.get_account_info()
     open_positions = trading_system.execution_handler.position_manager.positions
     trade_history = trading_system.execution_handler.get_trades()
+    equity_chart = trading_system.data_handler.generate_equity_curve_chart()
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "account": account_info,
         "positions": open_positions,
-        "trades": trade_history
+        "trades": trade_history,
+        "equity_chart": equity_chart
     })
 
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
 async def stock_chart(request: Request, ticker: str):
-    data = trading_system.data_handler.get_historical_data(ticker)
+    start = datetime.now() - timedelta(days=290)
+    end = datetime.now()
+    data = trading_system.data_handler.get_historical_data(ticker, start, end)
     trades = trading_system.execution_handler.get_trade_markers(ticker)
     
     fig = go.Figure()
