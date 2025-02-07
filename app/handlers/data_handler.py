@@ -8,8 +8,14 @@ from alpaca.data.live import StockDataStream
 from alpaca.data.enums import DataFeed
 from alpaca.data import StockBarsRequest, Bar
 from alpaca.data import TimeFrame
+from alpaca.trading import OrderSide
+import duckdb, logging
+import plotly.graph_objects as go
+import pandas as pd
+
 
 logger = logging.getLogger("app")
+INITIAL_BALANCE = 30000
 
 
 class DataHandler():
@@ -121,6 +127,87 @@ class DataHandler():
             data[ticker] = ticker_data
         return data
     
+
+    def generate_equity_curve_chart(self):
+        """Generates an equity curve from trade history stored in trades.db."""
+        
+        # Connect to DuckDB and fetch trade history
+        if self.is_backtest:
+            conn_str = f"{self.db_base_path}/backtest_trades.db"
+        else:
+            conn_str = f"{self.db_base_path}/trades.db"
+        query = """
+            SELECT timestamp, ticker, action as side, price, qty as quantity 
+            FROM trades 
+            ORDER BY timestamp ASC
+        """
+        df = self.query_duckdb_db(conn_str, query)
+
+        # If no trade data exists, return an empty message
+        if df.empty:
+            return "<p class='text-gray-400'>No trade data available.</p>"
+
+        # Ensure timestamps are in datetime format
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+        # Calculate realized P&L
+        equity = INITIAL_BALANCE
+        equity_curve = []
+        
+        for index, row in df.iterrows():
+            trade_value = row["price"] * row["quantity"]
+            
+            if row["side"] is OrderSide.BUY:
+                equity -= trade_value  # Deduct cost of purchase
+            elif row["side"] is OrderSide.SELL:
+                equity += trade_value  # Add revenue from sale
+            
+            equity_curve.append((row["timestamp"], equity))
+
+        # Convert to DataFrame
+        equity_df = pd.DataFrame(equity_curve, columns=["timestamp", "equity"])
+
+        # Generate the Plotly chart
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=equity_df["timestamp"],
+            y=equity_df["equity"],
+            mode="lines",
+            line=dict(color="cyan", width=2),
+            name="Equity Curve"
+        ))
+
+        # Chart layout settings
+        fig.update_layout(
+            template="plotly_dark",
+            title="Account Equity Curve",
+            xaxis_title="Time",
+            yaxis_title="Equity",
+            plot_bgcolor="black",
+            paper_bgcolor="black",
+            font=dict(color="white"),
+            margin=dict(l=40, r=20, t=40, b=40)
+        )
+
+        return fig.to_html(full_html=False)
+
+
+    def get_historical_data(self, ticker, start, end):
+        """
+        Fetch historical data for the specified ticker and timeframe.
+        """
+        conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+        query = f"SELECT * FROM ticker_data WHERE timestamp >= '{start}' AND timestamp <= '{end}' ORDER BY timestamp ASC"
+        try:
+            data = conn.sql(query).df()
+        except Exception as e:
+            logger.error("Error fetching historical data for %r", ticker, exc_info=e)
+            return None
+        finally:
+            conn.close()
+        return data
+
+
     async def handle_stream_bar_data(self, bar: Bar):
         """
         Process incoming bar and update ticker_data OHLC
@@ -137,6 +224,20 @@ class DataHandler():
         value_str = f"('{timestamp}', '{symbol}', {bar.open}, {bar.high}, {bar.low}, {bar.close}, {bar.volume}, {bar.vwap})"
         logger.info('saving values for %r @ %r', symbol, timestamp)
         self.save_to_db(symbol, [value_str])
+
+
+    def query_duckdb_db(self, conn_str, query):
+        """Query a DuckDB database and return the results as a Pandas DataFrame."""
+        conn = duckdb.connect(conn_str)
+        df = None
+        try:
+            df = conn.execute(query).fetchdf()
+        except Exception as e:
+            logger.error("Error fetching data from DuckDB database", exc_info=e)
+            raise e
+        finally:
+            conn.close()
+        return df
 
     def save_market_data(self, data: dict):
         for ticker in data.keys():
