@@ -77,7 +77,10 @@ class ExecutionHandler():
         return order
     
     def get_all_positions(self):
-        return self.trading_client.get_all_positions()
+        if self.is_backtest:
+            return self.position_manager.positions
+        else:
+            return self.trading_client.get_all_positions()
 
     def get_buying_power(self):
         return self.trading_client.get_account().buying_power
@@ -86,6 +89,34 @@ class ExecutionHandler():
         """Get the next market open time."""
         clock: Clock = self.trading_client.get_clock()
         return clock.next_open
+    
+    def get_trades(self):
+        db_table = "trades"
+        trades = None
+        if self.is_backtest:
+            db_table = "backtest_trades"
+        try:
+            conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
+            trades = conn.sql("SELECT * FROM trades").df()
+        except Exception as e:
+            logger.exception("Error fetching trades", exc_info=e)
+        finally:
+            conn.close()
+        return trades
+    
+    def get_trade_markers(self, ticker):
+        db_table = "trades"
+        trades = None
+        if self.is_backtest:
+            db_table = "backtest_trades"
+        try:
+            conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
+            trades = conn.sql(f"SELECT datetime, price, trade_type FROM trades WHERE ticker = '{ticker}'").fetchdf()
+        except Exception as e:
+            logger.exception("Error fetching trades", exc_info=e)
+        finally:
+            conn.close()
+        return trades
 
     def handle_execution(self, signals_map: dict):
         if self.is_backtest:
