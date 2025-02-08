@@ -3,7 +3,7 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="container mx-auto p-6">
+<div class="container mx-auto p-6 bg-gray-900 min-h-screen">
     <h2 class="text-2xl font-bold text-gray-200 mb-4">Account Information</h2>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div class="bg-gray-800 p-4 rounded-lg shadow-md">
@@ -22,9 +22,9 @@
 
     <h2 class="text-2xl font-bold text-gray-200 mt-8 mb-4">Open Positions</h2>
     <div class="overflow-x-auto">
-        <table class="min-w-full bg-gray-900 text-white">
+        <table class="min-w-full bg-gray-800 text-white">
             <thead>
-                <tr class="bg-gray-800 text-gray-300">
+                <tr class="bg-gray-700 text-gray-300">
                     <th class="py-3 px-4 text-left">Ticker</th>
                     <th class="py-3 px-4 text-left">Quantity</th>
                     <th class="py-3 px-4 text-left">Entry Price</th>
@@ -34,7 +34,7 @@
             </thead>
             <tbody>
                 {% for position in positions %}
-                <tr class="border-b border-gray-700">
+                <tr class="border-b border-gray-600">
                     <td class="py-3 px-4">{{ position.ticker }}</td>
                     <td class="py-3 px-4">{{ position.quantity }}</td>
                     <td class="py-3 px-4">{{ position.entry_price }}</td>
@@ -48,9 +48,9 @@
 
     <h2 class="text-2xl font-bold text-gray-200 mt-8 mb-4">Trade History</h2>
     <div class="overflow-x-auto">
-        <table class="min-w-full bg-gray-900 text-white">
+        <table class="min-w-full bg-gray-800 text-white">
             <thead>
-                <tr class="bg-gray-800 text-gray-300">
+                <tr class="bg-gray-700 text-gray-300">
                     <th class="py-3 px-4 text-left">Time</th>
                     <th class="py-3 px-4 text-left">Ticker</th>
                     <th class="py-3 px-4 text-left">Side</th>
@@ -60,7 +60,7 @@
             </thead>
             <tbody>
                 {% for trade in trades %}
-                <tr class="border-b border-gray-700">
+                <tr class="border-b border-gray-600">
                     <td class="py-3 px-4">{{ trade.time }}</td>
                     <td class="py-3 px-4">{{ trade.ticker }}</td>
                     <td class="py-3 px-4">{{ trade.side }}</td>
