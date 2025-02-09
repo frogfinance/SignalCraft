@@ -86,7 +86,7 @@ class DataHandler():
                 if data is None or data.data is None:
                     logger.info("No data received", data)
                 else:    
-                    logger.info("Data received for %r from %r to $r", ticker, curr_start, curr_end)
+                    logger.info("Data received for %r from %r to %r", ticker, curr_start, curr_end)
                     self.save_market_data(data.data)
                 logger.info(f"Data saved for tickers")
                 curr_start = curr_end
