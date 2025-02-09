@@ -49,6 +49,9 @@ class TradingSystem:
     async def run(self):
         if self.backtest_mode:
             backtest_system = BacktestingSystem(tickers, ALPACA_API_KEY, ALPACA_API_SECRET)
+            self.data_handler = backtest_system.data_handler
+            self.execution_handler = backtest_system.execution_handler
+            self.strategy_handler = backtest_system.strategy_handler
             logger.info("AlgoTrader starting backtest mode ->")
             await backtest_system.run_backtest()
         else:
