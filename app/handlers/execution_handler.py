@@ -91,17 +91,17 @@ class ExecutionHandler():
         return clock.next_open
     
     def get_trades(self):
-        db_table = "trades"
+        db_table = "backtest_trades" if self.is_backtest else "trades"
         trades = None
-        if self.is_backtest:
-            db_table = "backtest_trades"
+        conn = None
         try:
             conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
             trades = conn.sql("SELECT * FROM trades").df()
         except Exception as e:
             logger.exception("Error fetching trades", exc_info=e)
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
         return trades
     
     def get_trade_markers(self, ticker):
