@@ -63,13 +63,17 @@ async def dashboard(request: Request):
     open_positions = trading_system.execution_handler.position_manager.positions
     trade_history = trading_system.execution_handler.get_trades()
     equity_chart = trading_system.data_handler.generate_equity_curve_chart()
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "account": account_info,
-        "positions": open_positions,
-        "trades": trade_history,
-        "equity_chart": equity_chart
-    })
+
+    if trading_system.backtest_mode:
+        return templates.TemplateResponse("backtest_dashboard.html", {"request": request})
+    else:
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "account": account_info,
+            "positions": open_positions,
+            "trades": trade_history,
+            "equity_chart": equity_chart
+        })
 
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
 async def stock_chart(request: Request, ticker: str):
