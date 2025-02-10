@@ -45,6 +45,7 @@ class TradingSystem:
         self.backtest_mode = BACKTEST
         self.trade_results = []  # Store results of backtested trades
         self.backtest_name = ''
+        self.backtest_system = None
 
     async def run(self):
         if self.backtest_mode:
@@ -53,7 +54,8 @@ class TradingSystem:
             self.execution_handler = backtest_system.execution_handler
             self.strategy_handler = backtest_system.strategy_handler
             logger.info("AlgoTrader starting backtest mode ->")
-            await backtest_system.run_backtest()
+            self.backtest_system = backtest_system
+            await self.backtest_system.run_backtest()
         else:
             await self.run_algo_trader()
 
