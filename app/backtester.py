@@ -1,4 +1,5 @@
 
+import json
 from app.handlers.data_handler import DataHandler
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.strategy_handler import StrategyHandler
@@ -19,6 +20,7 @@ class BacktestingSystem():
         self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
         self.trade_results = []  # Store results of backtested trades
         self.tickers = tickers
+        self.registered_websockets = []
 
     def is_market_open(self, timestamp):
         if timestamp.weekday() >= 5:
@@ -28,6 +30,10 @@ class BacktestingSystem():
         if timestamp.hour == 9 and timestamp.minute < 30:
             return False
         return True
+    
+    def register_websocket(self, ws):
+        # register a websocket to the backtesting system to feed information to the front end
+        self.registered_websockets.append(ws)
 
     async def run_backtest(self, start_candle_index=3090):
         logger.info("AlgoTrader BacktestingSystem fetching backtest data")
@@ -58,6 +64,9 @@ class BacktestingSystem():
             if candle_index % 5 == 0:
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
+                for ws in self.registered_websockets:
+                    backtest_data = dict(price_map=ticker_to_price_map, trade_results=self.trade_results)
+                    await ws.send(json.dumps(backtest_data))
             await asyncio.sleep(0)
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
         logger.info("Backtest completed. Results: %r", self.trade_results)
