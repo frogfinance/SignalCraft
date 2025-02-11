@@ -5,7 +5,7 @@ import asyncio, logging
 import logging.config
 import plotly.graph_objects as go
 from pathlib import Path
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -110,3 +110,12 @@ async def websocket_trades(websocket: WebSocket):
         trades = trading_system.execution_handler.get_trades()
         await websocket.send_text(json.dumps(trades))
         await asyncio.sleep(1)
+
+@app.websocket("/ws/backtest")
+async def websocket_backtest(websocket: WebSocket):
+    await trading_system.backtest_system.ws_manager.connect(websocket)
+    try:
+        while True:
+            await websocket.receive_text()  # Keep the connection open
+    except WebSocketDisconnect:
+        await trading_system.backtest_system.ws_manager.disconnect(websocket)
