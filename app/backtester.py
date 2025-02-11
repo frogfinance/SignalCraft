@@ -8,6 +8,8 @@ import asyncio
 
 from alpaca.data import TimeFrame
 
+from app.models.websocket_manager import WebSocketManager
+
 logger = logging.getLogger("app")
 
 
@@ -21,6 +23,9 @@ class BacktestingSystem():
         self.trade_results = []  # Store results of backtested trades
         self.tickers = tickers
         self.registered_websockets = []
+
+        # Initialize WebSocket Manager
+        self.ws_manager = WebSocketManager()
 
     def is_market_open(self, timestamp):
         if timestamp.weekday() >= 5:
@@ -61,12 +66,11 @@ class BacktestingSystem():
                 if outcome is not None:
                     self.trade_results.append(outcome)
                     logger.info("Trade outcome: %r", outcome)
+                    await self.ws_manager.send_message(json.dumps(outcome))
             if candle_index % 5 == 0:
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
-                for ws in self.registered_websockets:
-                    backtest_data = dict(price_map=ticker_to_price_map, trade_results=self.trade_results)
-                    await ws.send(json.dumps(backtest_data))
+                await self.ws_manager.send_message(json.dumps(self.execution_handler.position_manager.stats()))
             await asyncio.sleep(0)
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
         logger.info("Backtest completed. Results: %r", self.trade_results)
