@@ -114,8 +114,13 @@ async def websocket_trades(websocket: WebSocket):
 @app.websocket("/ws/backtest")
 async def websocket_backtest(websocket: WebSocket):
     await trading_system.backtest_system.ws_manager.connect(websocket)
+
+    # Start the backtest as a background task
+    trading_system.backtest_system.start_backtest()
+
     try:
         while True:
             await websocket.receive_text()  # Keep the connection open
     except WebSocketDisconnect:
+        trading_system.backtest_system.stop_backtest()
         await trading_system.backtest_system.ws_manager.disconnect(websocket)
