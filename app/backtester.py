@@ -26,6 +26,7 @@ class BacktestingSystem():
 
         # Initialize WebSocket Manager
         self.ws_manager = WebSocketManager()
+        self.task = None
 
     def is_market_open(self, timestamp):
         if timestamp.weekday() >= 5:
@@ -54,6 +55,8 @@ class BacktestingSystem():
         # get all timestamps for the backtest data ordered by eldest to youngest
         logger.info("AlgoTrader BacktestingSystem begin backtest & signal generation")
         while candle_index <= total_number_candles:
+            if self.task and self.task.cancelled():
+                return  # Stop if the task is cancelled
             logger.debug("Running backtest for candle %r / %r", candle_index, total_number_candles)
             backtest_data['end'] = backtest_ticker_data['timestamp'].iloc[candle_index]
             candle_index += 1
@@ -74,3 +77,15 @@ class BacktestingSystem():
             await asyncio.sleep(0)
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
         logger.info("Backtest completed. Results: %r", self.trade_results)
+
+    def start_backtest(self):
+        """Starts the backtest task in the background."""
+        if self.task and not self.task.done():
+            self.task.cancel()  # Cancel any existing task before starting a new one
+        self.task = asyncio.create_task(self.run_backtest())
+
+    def stop_backtest(self):
+        """Stops the running backtest."""
+        if self.task and not self.task.done():
+            self.task.cancel()
+            self.task = None
