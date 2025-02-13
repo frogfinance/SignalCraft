@@ -14,6 +14,8 @@ class MarketProfileStrategy(BaseStrategy):
         self.high_rsi_threshold = 64
         self.low_rsi_threshold = 37
         self.timeframe = timeframe
+        self.name = 'market_profile'
+        self.display_name = 'Market Profile'
 
     def calculate_rsi(self, data: pd.DataFrame, period: int = 14) -> pd.Series:
         """Calculate Relative Strength Index (RSI)."""
@@ -99,3 +101,13 @@ class MarketProfileStrategy(BaseStrategy):
             signal.reason = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
 
         return signal
+
+
+    def to_dict(self) -> Dict:
+        return {
+            'name': self.name,
+            'display_name': self.display_name,
+            'high_rsi_threshold': self.high_rsi_threshold,
+            'low_rsi_threshold': self.low_rsi_threshold,
+            'timeframe': self.timeframe.value
+        }

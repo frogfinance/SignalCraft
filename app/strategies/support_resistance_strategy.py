@@ -15,6 +15,9 @@ class SupportResistanceStrategy(BaseStrategy):
         self.lookback = 360  # Number of past intervals to analyze support/resistance
         self.support_threshold = 0.015  # 1.5% threshold to buy near support
         self.resistance_threshold = 0.02  # 2% threshold to sell near resistance
+        self.name = 'support_resistance'
+        self.display_name = 'Support & Resistance'
+        self.time_interval = "15min"
 
     def resample_data(self, data: pd.DataFrame, interval="60min") -> pd.DataFrame:
         """Resample minute-level data into 60-minute intervals."""
@@ -54,7 +57,7 @@ class SupportResistanceStrategy(BaseStrategy):
         latest_row = data.iloc[-1]
         current_price = latest_row['close']
 
-        signal = Signal(strategy="support_resistance", ticker=ticker, price=current_price)
+        signal = Signal(strategy=self.name, ticker=ticker, price=current_price)
 
         timestamp = data['timestamp'].iloc[-1]
         # check every hour on the 29th minute
@@ -70,7 +73,7 @@ class SupportResistanceStrategy(BaseStrategy):
             logger.debug(f"Generating signal for %r at %r", ticker, timestamp)
         
         # Resample data into 15-minute intervals
-        data = self.resample_data(data, interval="15min")
+        data = self.resample_data(data, interval=self.time_interval)
 
         # Ensure enough historical data for support/resistance analysis
         if data.shape[0] < self.lookback:
@@ -94,3 +97,13 @@ class SupportResistanceStrategy(BaseStrategy):
                 return signal
 
         return signal
+
+    def to_dict(self) -> Dict:
+        return {
+            "name": self.name,
+            "display_name": self.display_name,
+            "lookback": self.lookback,
+            "support_threshold": self.support_threshold,
+            "resistance_threshold": self.resistance_threshold,
+            "time_interval": self.time_interval
+        }

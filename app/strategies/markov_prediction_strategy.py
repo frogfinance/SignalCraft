@@ -16,6 +16,7 @@ class MarkovPredictionStrategy(BaseStrategy):
         self.unique_states = None
         self.db_base_path = db_base_path
         self.name = 'markov'
+        self.display_name = 'Markov Prediction'
         # self.signal_strategy = SignalStrategy()
 
     def discretize_features(self, data, n_bins=10):
@@ -161,3 +162,10 @@ class MarkovPredictionStrategy(BaseStrategy):
         transition_matrix = (transition_matrix + 1) / (transition_matrix.sum(axis=1, keepdims=True) + n_states)
         self.transition_matrix = transition_matrix
         self.unique_states = unique_states
+
+
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'display_name': self.display_name
+        }

@@ -14,6 +14,8 @@ class TrendFollowingStrategy(BaseStrategy):
         self.trend_confirmation_candles = 3  # Number of candles to confirm a trend
         self.stop_loss_multiplier = 0.01  # 1% stop loss from the demand level
         self.take_profit_multiplier = 0.02  # 2% take profit from the recent high
+        self.name = 'trend_following'
+        self.display_name = 'Trend Following'
 
     def resample_data(self, data: pd.DataFrame, interval="15min") -> pd.DataFrame:
         """Resample minute-level data into the specified interval."""
@@ -125,3 +127,13 @@ class TrendFollowingStrategy(BaseStrategy):
                 signal.take_profit = take_profit
 
         return signal
+    
+    def to_dict(self):
+        return {
+            "name": self.name,
+            "display_name": self.display_name,
+            "lookback": self.lookback,
+            "trend_confirmation_candles": self.trend_confirmation_candles,
+            "stop_loss_multiplier": self.stop_loss_multiplier,
+            "take_profit_multiplier": self.take_profit_multiplier
+        }
