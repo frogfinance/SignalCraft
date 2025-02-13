@@ -10,31 +10,30 @@
         <form id="backtest-form" class="space-y-4">
             <div>
                 <label class="block text-gray-400">Ticker</label>
-                <input type="text" id="ticker" name="ticker" class="w-full p-2 bg-gray-700 text-white rounded-lg" placeholder="AAPL">
+                {% for ticker in tickers %}
+                <input type="text" id="ticker-{{ticker}}" name="{{ticker}}" class="w-full p-2 bg-gray-700 text-white rounded-lg" placeholder="AAPL">
+                {% endfor %}
             </div>
             <div>
                 <label class="block text-gray-400">Strategy</label>
                 <select id="strategy" name="strategy" class="w-full p-2 bg-gray-700 text-white rounded-lg">
-                    <option value="moving_average">Moving Average</option>
-                    <option value="mean_reversion">Mean Reversion</option>
-                    <option value="momentum">Momentum</option>
+                    {% for strategy in strategies %}
+                    <option value="{{strategy.name}}">{{strategy.display_name}}</option>
+                    {% endfor %}
                 </select>
             </div>
-            <div>
-                <label class="block text-gray-400">Timeframe</label>
-                <input type="date" id="timeframe" name="timeframe" max="{{ current_year }}-12-31" class="w-full p-2 bg-gray-700 text-white rounded-lg">
-            </div>
+
             <button type="submit" class="w-full bg-blue-500 hover:bg-blue-400 text-white py-2 rounded-lg transition">Start Backtest</button>
         </form>
     </div>
 
     <!-- Right Hand Chart Section -->
     <div class="w-3/4 ml-6 bg-gray-800 p-6 rounded-lg shadow-md">
-        <h2 class="text-xl font-bold text-gray-200 mb-4">Stock Price Chart</h2>
+        <h2 class="text-xl font-bold text-gray-200 mb-4">Backtest Chart</h2>
         <div id="chart-container" class="w-full h-[500px] bg-gray-900 rounded-lg"></div>
         
         <!-- Account Balance -->
-        <h2 class="text-xl font-bold text-gray-200 mt-6">Account Balance: <span id="account-balance" class="text-green-400">$10000</span></h2>
+        <h2 class="text-xl font-bold text-gray-200 mt-6">Account Balance: <span id="account-balance" class="text-green-400">{{ account_info.buying_power or "30000" }}</span></h2>
         
         <!-- Open Positions Table -->
         <h2 class="text-xl font-bold text-gray-200 mt-4">Current Positions</h2>
@@ -51,25 +50,40 @@
         </table>
     </div>
 </div>
+{% endblock %}
 
-<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+{% block extra_js %}
+
+<script src="https://s3.tradingview.com/tv.js"></script>
 <script>
-    const chartOptions = {
-        chart: { type: 'line', height: 500, background: '#1a1a1a' },
-        series: [{ name: "Price", data: [] }],
-        xaxis: { type: 'datetime', labels: { style: { colors: '#ffffff' } } },
-        yaxis: { labels: { style: { colors: '#ffffff' } } },
-        theme: { mode: 'dark' }
-    };
-    const chart = new ApexCharts(document.querySelector("#chart-container"), chartOptions);
-    chart.render();
+    let tradingViewWidget;
+    function createTradingViewChart(ticker) {
+        if (tradingViewWidget) {
+            tradingViewWidget.remove(); // Remove existing widget before creating a new one
+        }
+        tradingViewWidget = new TradingView.widget({
+            "container_id": "chart-container",
+            "width": "100%",
+            "height": "500",
+            "symbol": ticker,
+            "interval": "1",
+            "timezone": "Etc/UTC",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#1a1a1a",
+            "enable_publishing": false,
+            "hide_legend": true,
+            "allow_symbol_change": false,
+            "save_image": false
+        });
+    }
+    
+    createTradingViewChart("NASDAQ:AAPL"); // Default chart
 
-    const ws = new WebSocket("ws://localhost:8000/ws/backtest");
+    const ws = new WebSocket((window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws/backtest");
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
-        if (data.price) {
-            chart.appendData([{ data: [[data.timestamp, data.price]] }]);
-        }
         if (data.balance) {
             document.getElementById("account-balance").textContent = `$${data.balance.toFixed(2)}`;
         }
@@ -86,7 +100,11 @@
                 table.appendChild(row);
             });
         }
+        if (data.ticker_data) {
+            createTradingViewChart(data.ticker_data.symbol); // Reinitialize chart with new ticker
+        }
     };
+
 
     document.getElementById("backtest-form").onsubmit = function(event) {
         event.preventDefault();
