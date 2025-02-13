@@ -5,7 +5,7 @@ import asyncio, logging
 import logging.config
 import plotly.graph_objects as go
 from pathlib import Path
-from fastapi import FastAPI, Request, WebSocket
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -63,13 +63,17 @@ async def dashboard(request: Request):
     open_positions = trading_system.execution_handler.position_manager.positions
     trade_history = trading_system.execution_handler.get_trades()
     equity_chart = trading_system.data_handler.generate_equity_curve_chart()
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "account": account_info,
-        "positions": open_positions,
-        "trades": trade_history,
-        "equity_chart": equity_chart
-    })
+
+    if trading_system.backtest_mode:
+        return templates.TemplateResponse("backtest_dashboard.html", {"request": request})
+    else:
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "account": account_info,
+            "positions": open_positions,
+            "trades": trade_history,
+            "equity_chart": equity_chart
+        })
 
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
 async def stock_chart(request: Request, ticker: str):
@@ -106,3 +110,17 @@ async def websocket_trades(websocket: WebSocket):
         trades = trading_system.execution_handler.get_trades()
         await websocket.send_text(json.dumps(trades))
         await asyncio.sleep(1)
+
+@app.websocket("/ws/backtest")
+async def websocket_backtest(websocket: WebSocket):
+    await trading_system.backtest_system.ws_manager.connect(websocket)
+
+    # Start the backtest as a background task
+    trading_system.backtest_system.start_backtest()
+
+    try:
+        while True:
+            await websocket.receive_text()  # Keep the connection open
+    except WebSocketDisconnect:
+        trading_system.backtest_system.stop_backtest()
+        await trading_system.backtest_system.ws_manager.disconnect(websocket)
