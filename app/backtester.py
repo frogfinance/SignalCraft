@@ -63,17 +63,42 @@ class BacktestingSystem():
             # check if candle data is within market open hours
             if not self.is_market_open(backtest_data['end']):
                 continue
-            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
+            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data
             for signal in signal_data.values():
                 outcome = self.execution_handler.run_backtest_trade(signal)
                 if outcome is not None:
                     self.trade_results.append(outcome)
                     logger.info("Trade outcome: %r", outcome)
-                    await self.ws_manager.send_message(json.dumps(outcome))
+                    backtest_data = dict(
+                        trade={
+                            "timestamp": outcome['timestamp'],
+                            "ticker": outcome['ticker'],
+                            "price": outcome['price'],
+                            "side": outcome['side'],
+                            "qty": outcome['qty']
+                        },
+                        balance=self.execution_handler.position_manager.cash_balance,
+                        positions=list(self.execution_handler.position_manager.positions.values()),
+                        ticker_data=None
+                    )
+                    await self.ws_manager.send_message(json.dumps(backtest_data))
             if candle_index % 5 == 0:
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
-                await self.ws_manager.send_message(json.dumps(self.execution_handler.position_manager.stats()))
+                backtest_data = dict(
+                        trade={
+                            "timestamp": outcome['timestamp'],
+                            "ticker": outcome['ticker'],
+                            "price": outcome['price'],
+                            "side": outcome['side'],
+                            "qty": outcome['qty']
+                        },
+                        balance=self.execution_handler.position_manager.cash_balance,
+                        positions=list(self.execution_handler.position_manager.positions.values()),
+                        stats=self.execution_handler.position_manager.stats(),
+                        ticker_data=ticker_to_price_map
+                    )
+                await self.ws_manager.send_message(json.dumps(backtest_data))
             await asyncio.sleep(0)
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
         logger.info("Backtest completed. Results: %r", self.trade_results)
