@@ -75,6 +75,20 @@ async def dashboard(request: Request):
             "equity_chart": equity_chart
         })
 
+@app.get("/backtest", response_class=HTMLResponse)
+async def backtest_dashboard(request: Request):
+    account_info = trading_system.execution_handler.position_manager.get_account_info()
+
+    if trading_system.backtest_mode:
+        return templates.TemplateResponse("backtest_dashboard.html", {"request": request})
+    else:
+        return templates.TemplateResponse("dashboard.html", {
+            "request": request,
+            "account": account_info,
+            "tickers": trading_system.data_handler.tickers,
+            "strategies": trading_system.strategy_handler.strategies
+        })
+
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
 async def stock_chart(request: Request, ticker: str):
     start = datetime.now() - timedelta(days=290)
