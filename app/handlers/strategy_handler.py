@@ -53,3 +53,7 @@ class StrategyHandler():
                     signal_data[ticker] = signal
             
         return signal_data
+
+    def get_strategies(self):
+        strategies = [strat.to_dict() for strat in self.strategies.values()]
+        return strategies
