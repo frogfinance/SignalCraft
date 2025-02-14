@@ -86,13 +86,7 @@ class BacktestingSystem():
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
                 backtest_data = dict(
-                        trade={
-                            "timestamp": outcome['timestamp'],
-                            "ticker": outcome['ticker'],
-                            "price": outcome['price'],
-                            "side": outcome['side'],
-                            "qty": outcome['qty']
-                        },
+                        trade=None,
                         balance=self.execution_handler.position_manager.cash_balance,
                         positions=list(self.execution_handler.position_manager.positions.values()),
                         stats=self.execution_handler.position_manager.stats(),
