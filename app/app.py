@@ -86,7 +86,8 @@ async def backtest_dashboard(request: Request):
             "request": request,
             "account": account_info,
             "tickers": trading_system.data_handler.tickers,
-            "strategies": trading_system.strategy_handler.strategies
+            "strategies": trading_system.strategy_handler.strategies,
+            "positions": [],
         })
 
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
