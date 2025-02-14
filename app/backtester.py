@@ -63,7 +63,7 @@ class BacktestingSystem():
             # check if candle data is within market open hours
             if not self.is_market_open(backtest_data['end']):
                 continue
-            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data
+            signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
             for signal in signal_data.values():
                 outcome = self.execution_handler.run_backtest_trade(signal)
                 if outcome is not None:
