@@ -37,6 +37,8 @@ async def lifespan(app: FastAPI):
         trader_task.cancel()  # Cancel the background trading task
         if trading_system.data_handler is not None:
             trading_system.data_handler.shutdown()
+        if trading_system.backtest_system is not None:
+            trading_system.backtest_system.stop_backtest()
         try:
             await trader_task
         except asyncio.CancelledError:
@@ -128,6 +130,9 @@ async def websocket_trades(websocket: WebSocket):
 
 @app.websocket("/ws/backtest")
 async def websocket_backtest(websocket: WebSocket):
+    """
+    called by the backtest_dashboard javascript to register a new backtest & subscribe to data
+    """
     await trading_system.backtest_system.ws_manager.connect(websocket)
 
     # Start the backtest as a background task
