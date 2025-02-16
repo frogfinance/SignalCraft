@@ -31,7 +31,11 @@
     <!-- Right Hand Chart Section -->
     <div class="w-3/4 ml-6 bg-gray-800 p-6 rounded-lg shadow-md">
         <h2 class="text-xl font-bold text-gray-200 mb-4">Backtest Chart</h2>
-        <div id="chart-container" class="w-full h-[500px] bg-gray-900 rounded-lg"></div>
+        <lightweight-chart id="chart-container"
+                autosize
+                type="candlestick"
+            ></lightweight-chart>
+        <lightweight-chart-example id="chart-container"></lightweight-chart-example>
         
         <!-- Account Balance -->
         <h2 class="text-xl font-bold text-gray-200 mt-6">Account Balance: <span id="account-balance" class="text-green-400">{{ account_info.buying_power or "30000" }}</span></h2>
@@ -63,31 +67,30 @@
 {% block extra_js %}
 <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 <script>
-    const chartContainer = document.getElementById("chart-container");
-    const chart = LightweightCharts.createChart(chartContainer, {
-        width: chartContainer.clientWidth,
-        height: 500,
-        layout: {
-            backgroundColor: '#1a1a1a',
-            textColor: '#ffffff',
-        },
-        grid: {
-            vertLines: { color: '#444' },
-            horzLines: { color: '#444' },
-        },
-        timeScale: { borderColor: '#888' },
-        rightPriceScale: { borderColor: '#888' }
-    });
     
-    const candleSeries = chart.addCandlestickSeries();
-    
+
     const ws = new WebSocket((window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws/backtest");
+
+    const backtest_price_data = {{ backtest_price_data|tojson }};
     
+    const getChartElement = function(){
+        const chartElement = document.getElementById("chart-container");
+        return chartElement;
+    }
+
+    ws.onopen = function() {
+        console.log("WebSocket connection established");
+    };
+
     ws.onmessage = function(event) {
         const data = JSON.parse(event.data);
+        
+        // Update account balance
         if (data.balance) {
             document.getElementById("account-balance").textContent = `$${data.balance.toFixed(2)}`;
         }
+
+        // Update positions table
         if (data.positions) {
             const table = document.getElementById("positions-table");
             table.innerHTML = "";
@@ -101,18 +104,23 @@
                 table.appendChild(row);
             });
         }
+
+        // Update chart with new ticker data
         if (data.ticker_data) {
             const priceData = data.ticker_data.map(entry => ({
                 time: entry.timestamp,
                 open: entry.open,
                 high: entry.high,
                 low: entry.low,
-                close: entry.close,
+                close: entry.close
             }));
-            candleSeries.setData(priceData);
+            
+            // Properly update the Web Component chart
+            const chartElement = getChartElement();
+            chartElement._updateData(priceData);
         }
     };
-    
+
     document.getElementById("backtest-form").onsubmit = function(event) {
         event.preventDefault();
         const ticker = document.getElementById("ticker").value;
@@ -120,5 +128,67 @@
         const timeframe = document.getElementById("timeframe").value;
         ws.send(JSON.stringify({ ticker, strategy, timeframe }));
     };
+
+    (function() {
+      
+        class LightweightChartWC extends HTMLElement {
+            constructor() {
+                super();
+                this.chartElement = undefined;
+            }
+
+            connectedCallback() {
+
+                this.chartElement = document.getElementById('chart-container');
+                this._configure_data_feed();
+                if (this.chartElement.chart) {
+                    this.chartElement.chart.timeScale().fitContent();
+                }
+            }
+
+            _configure_data_feed() {
+                if (!this.chartElement) {
+                    return;
+                }
+                const candlestickTypeData = ['candlestick', 'bar'].includes(
+                    this.chartElement.type
+                );
+                this.chartElement.data = backtest_price_data;
+                if (this.chartElement.type === 'baseline') {
+                    const average =
+                        newData.reduce((s, c) => s + c.value, 0) / newData.length;
+                    this.chartElement.seriesOptions = {
+                        baseValue: { type: 'price', price: average },
+                    };
+                }
+            }
+
+            _updateData(newData) {
+                if (!this.chartElement) {
+                    return;
+                }
+                const candlestickTypeData = ['candlestick', 'bar'].includes(
+                    this.chartElement.type
+                );
+                this.chartElement.data = newData;
+                if (this.chartElement.type === 'baseline') {
+                    const average =
+                        newData.reduce((s, c) => s + c.value, 0) / newData.length;
+                    this.chartElement.seriesOptions = {
+                        baseValue: { type: 'price', price: average },
+                    };
+                }
+                this.chartElement.chart.timeScale().fitContent();
+            }
+
+        }
+
+        window.customElements.define(
+            'lightweight-chart',
+            LightweightChartWC
+        );
+    })();
+
+    // Create the custom element for the lightweight chart
 </script>
 {% endblock %}
