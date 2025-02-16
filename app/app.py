@@ -50,9 +50,11 @@ app = FastAPI(lifespan=lifespan)
 logging_config = log_util.gen_logging_config()
 logging.config.dictConfig(logging_config)
 
+logger = logging.getLogger("app")
+
 # Set up templates and static files for dashboard
 BASE_DIR = Path(__file__).resolve().parent
-logging.info("BASE_DIR: %r", BASE_DIR)
+logger.info("BASE_DIR: %r", BASE_DIR)
 app.mount("/static", StaticFiles(directory=BASE_DIR  / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
 
@@ -75,6 +77,7 @@ async def dashboard(request: Request):
             "account_info": account_info,
             "positions": open_positions,
             "trades": trade_history,
+            "backtest_price_data": dict(), # empty dict on page load
         })
     else:
         return templates.TemplateResponse("dashboard.html", {
@@ -88,17 +91,19 @@ async def dashboard(request: Request):
 @app.get("/backtest", response_class=HTMLResponse)
 async def backtest_dashboard(request: Request):
     account_info = trading_system.execution_handler.position_manager.get_account_info()
+    open_positions = trading_system.execution_handler.position_manager.positions
+    trade_history = trading_system.execution_handler.get_trades()
 
-    if trading_system.backtest_mode:
-        return templates.TemplateResponse("backtest_dashboard.html", {"request": request})
-    else:
-        return templates.TemplateResponse("dashboard.html", {
-            "request": request,
-            "account": account_info,
-            "tickers": trading_system.data_handler.tickers,
-            "strategies": trading_system.strategy_handler.strategies,
-            "positions": [],
-        })
+    strategies = [s for s in trading_system.strategy_handler.strategies.values()]
+    return templates.TemplateResponse("backtest_dashboard.html", {
+        "request": request,
+        "tickers": trading_system.data_handler.tickers,
+        "strategies": strategies,
+        "account_info": account_info,
+        "positions": open_positions,
+        "trades": trade_history,
+        "backtest_price_data": dict(), # empty dict on page load
+    })
 
 @app.get("/chart/{ticker}", response_class=HTMLResponse)
 async def stock_chart(request: Request, ticker: str):
@@ -128,6 +133,7 @@ async def stock_chart(request: Request, ticker: str):
     chart_html = fig.to_html(full_html=False)
     return templates.TemplateResponse("chart.html", {"request": request, "chart": chart_html})
 
+
 @app.websocket("/ws/trades")
 async def websocket_trades(websocket: WebSocket):
     await websocket.accept()
@@ -136,19 +142,33 @@ async def websocket_trades(websocket: WebSocket):
         await websocket.send_text(json.dumps(trades))
         await asyncio.sleep(1)
 
+
 @app.websocket("/ws/backtest")
 async def websocket_backtest(websocket: WebSocket):
     """
-    called by the backtest_dashboard javascript to register a new backtest & subscribe to data
+    Called by the backtest_dashboard JavaScript to register a new backtest & subscribe to data.
     """
     await trading_system.backtest_system.ws_manager.connect(websocket)
 
-    # Start the backtest as a background task
-    trading_system.backtest_system.start_backtest()
-
     try:
         while True:
-            await websocket.receive_text()  # Keep the connection open
+            # Expecting JSON message with ticker and strategy
+            message = await websocket.receive_json()
+
+            ticker = message.get("ticker")
+            strategy = message.get("strategy")
+
+            if not ticker or not strategy:
+                await websocket.send_json({"error": "Missing ticker or strategy"})
+                continue
+
+            # Log the received message
+            logger.info(f"Starting backtest for: {ticker} using {strategy}")
+
+            # Start the backtest in a background task
+            asyncio.create_task(trading_system.backtest_system.start_backtest_for_ticker(ticker, strategy))
+
     except WebSocketDisconnect:
+        logger.warning("WebSocket disconnected.")
         trading_system.backtest_system.stop_backtest()
         await trading_system.backtest_system.ws_manager.disconnect(websocket)
