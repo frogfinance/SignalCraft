@@ -63,6 +63,7 @@ class DataHandler():
                     oldest_candle = last_candle
                 elif not oldest_candle:
                     oldest_candle = last_candle
+                
             start = oldest_candle if oldest_candle else start
         
 
