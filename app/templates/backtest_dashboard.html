@@ -10,9 +10,11 @@
         <form id="backtest-form" class="space-y-4">
             <div>
                 <label class="block text-gray-400">Ticker</label>
-                {% for ticker in tickers %}
-                <input type="text" id="ticker-{{ticker}}" name="{{ticker}}" class="w-full p-2 bg-gray-700 text-white rounded-lg" placeholder="AAPL">
-                {% endfor %}
+                <select id="ticker" name="ticker" class="w-full p-2 bg-gray-700 text-white rounded-lg">
+                    {% for ticker in tickers %}
+                    <option value="{{ ticker }}">{{ ticker }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div>
                 <label class="block text-gray-400">Strategy</label>
@@ -59,7 +61,7 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@3.4.0"></script>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 <script>
     const chartContainer = document.getElementById("chart-container");
     const chart = LightweightCharts.createChart(chartContainer, {
