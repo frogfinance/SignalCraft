@@ -67,7 +67,15 @@ async def dashboard(request: Request):
     equity_chart = trading_system.data_handler.generate_equity_curve_chart()
 
     if trading_system.backtest_mode:
-        return templates.TemplateResponse("backtest_dashboard.html", {"request": request})
+        strategies = [s for s in trading_system.strategy_handler.strategies.values()]
+        return templates.TemplateResponse("backtest_dashboard.html", {
+            "request": request,
+            "tickers": trading_system.data_handler.tickers,
+            "strategies": strategies,
+            "account_info": account_info,
+            "positions": open_positions,
+            "trades": trade_history,
+        })
     else:
         return templates.TemplateResponse("dashboard.html", {
             "request": request,
