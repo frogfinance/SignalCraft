@@ -85,12 +85,15 @@ class BacktestingSystem():
             if candle_index % 5 == 0:
                 ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                 self.execution_handler.update_backtest_positions(backtest_data['end'], ticker_to_price_map=ticker_to_price_map)
+                # send current ticker data to front end for tradingview chart
+                # expects a list of dictionaries with keys: timestamp, open, high, low, close
+                ticker_data = backtest_ticker_data.iloc[:candle_index].to_dict(orient='records')
                 backtest_data = dict(
                         trade=None,
                         balance=self.execution_handler.position_manager.cash_balance,
                         positions=list(self.execution_handler.position_manager.positions.values()),
                         stats=self.execution_handler.position_manager.stats(),
-                        ticker_data=ticker_to_price_map
+                        ticker_data=ticker_data
                     )
                 await self.ws_manager.send_message(json.dumps(backtest_data))
             await asyncio.sleep(0)
@@ -102,6 +105,21 @@ class BacktestingSystem():
         if self.task and not self.task.done():
             self.task.cancel()  # Cancel any existing task before starting a new one
         self.task = asyncio.create_task(self.run_backtest())
+
+
+    def start_backtest_for_ticker(self, ticker, strategy):
+        """Starts the backtest task in the background."""
+        if self.task and not self.task.done():
+            self.task.cancel()  # Cancel any existing task before starting a new one
+        self.tickers = [ticker]
+        self.strategy_handler.tickers = [ticker]
+        if (strategy in self.strategy_handler.strategies):
+            self.strategy_handler.strategies = {strategy: self.strategy_handler.strategies[strategy]}
+        else:
+            raise ValueError(f"Strategy {strategy} not found in strategy handler")
+        
+        self.task = asyncio.create_task(self.run_backtest())
+
 
     def stop_backtest(self):
         """Stops the running backtest."""
