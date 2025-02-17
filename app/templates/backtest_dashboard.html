@@ -2,6 +2,8 @@
 
 {% block title %}Backtesting Dashboard{% endblock %}
 
+{% block header %}
+{% endblock %}
 {% block content %}
 <div class="container mx-auto p-6 bg-gray-900 min-h-screen flex">
     <!-- Left Sidebar Form -->
@@ -31,12 +33,8 @@
     <!-- Right Hand Chart Section -->
     <div class="w-3/4 ml-6 bg-gray-800 p-6 rounded-lg shadow-md">
         <h2 class="text-xl font-bold text-gray-200 mb-4">Backtest Chart</h2>
-        <lightweight-chart id="chart-container"
-                autosize
-                type="candlestick"
-            ></lightweight-chart>
-        <lightweight-chart-example id="chart-container"></lightweight-chart-example>
-        
+        <div id="backtest-chart" class="w-full h-[500px] relative overflow-hidden"></div>
+
         <!-- Account Balance -->
         <h2 class="text-xl font-bold text-gray-200 mt-6">Account Balance: <span id="account-balance" class="text-green-400">{{ account_info.buying_power or "30000" }}</span></h2>
         
@@ -54,8 +52,8 @@
                 {% for position in positions %}
                 <tr>
                     <td class="py-2">{{ position.ticker }}</td>
-                    <td class="py-2">{{ position.quantity }}</td>
-                    <td class="py-2" style="color: {{ 'green' if position.pnl >= 0 else 'red' }};">$ {{ position.pnl }}</td>
+                    <td class="py-2">{{ position.qty }}</td>
+                    <td class="py-2" style="color: {{ 'green' if position.pnl >= 0 else 'red' }};">$ {{ position.pl }} (%{{ position.pl_pct }})</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -65,18 +63,37 @@
 {% endblock %}
 
 {% block extra_js %}
-<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-<script>
-    
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
+<script type="module">
+    const { createChart, BarSeries, CandlestickSeries } = LightweightCharts;
+    
     const ws = new WebSocket((window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws/backtest");
 
     const backtest_price_data = {{ backtest_price_data|tojson }};
-    
-    const getChartElement = function(){
-        const chartElement = document.getElementById("chart-container");
-        return chartElement;
-    }
+
+    let seriesData = null;
+    let chart = null;
+
+    const configueBacktestChart = function(elem, data) {
+        if (seriesData) {
+            for (const entry of data) {
+                seriesData.update(entry);
+            }
+            chart.timeScale().fitContent();
+        } else {
+            const element = document.getElementById(elem);
+            const containerWidth = element.clientWidth;
+            const containerHeight = element.clientHeight || 400;
+            chart = createChart(element, {
+                width: containerWidth,
+                height: containerHeight,
+            });
+            seriesData = chart.addSeries(CandlestickSeries);
+            seriesData.setData(data);
+            chart.timeScale().fitContent();
+        }
+    };
 
     ws.onopen = function() {
         console.log("WebSocket connection established");
@@ -98,8 +115,8 @@
                 const row = document.createElement("tr");
                 row.innerHTML = `
                     <td class="py-2">${position.ticker}</td>
-                    <td class="py-2">${position.quantity}</td>
-                    <td class="py-2" style="color: ${position.pnl >= 0 ? 'green' : 'red'};">$${position.pnl.toFixed(2)}</td>
+                    <td class="py-2">${position.qty}</td>
+                    <td class="py-2" style="color: ${position.pnl >= 0 ? 'green' : 'red'};">$${position.pl.toFixed(2)} (%${position.pl_pct})}</td>
                 `;
                 table.appendChild(row);
             });
@@ -108,7 +125,7 @@
         // Update chart with new ticker data
         if (data.ticker_data) {
             const priceData = data.ticker_data.map(entry => ({
-                time: entry.timestamp,
+                time: Math.floor(new Date(entry.timestamp).getTime() / 1000),
                 open: entry.open,
                 high: entry.high,
                 low: entry.low,
@@ -116,8 +133,7 @@
             }));
             
             // Properly update the Web Component chart
-            const chartElement = getChartElement();
-            chartElement._updateData(priceData);
+            configueBacktestChart("backtest-chart", priceData);
         }
     };
 
@@ -125,69 +141,8 @@
         event.preventDefault();
         const ticker = document.getElementById("ticker").value;
         const strategy = document.getElementById("strategy").value;
-        const timeframe = document.getElementById("timeframe").value;
-        ws.send(JSON.stringify({ ticker, strategy, timeframe }));
+        ws.send(JSON.stringify({ ticker, strategy }));
     };
-
-    (function() {
-      
-        class LightweightChartWC extends HTMLElement {
-            constructor() {
-                super();
-                this.chartElement = undefined;
-            }
-
-            connectedCallback() {
-
-                this.chartElement = document.getElementById('chart-container');
-                this._configure_data_feed();
-                if (this.chartElement.chart) {
-                    this.chartElement.chart.timeScale().fitContent();
-                }
-            }
-
-            _configure_data_feed() {
-                if (!this.chartElement) {
-                    return;
-                }
-                const candlestickTypeData = ['candlestick', 'bar'].includes(
-                    this.chartElement.type
-                );
-                this.chartElement.data = backtest_price_data;
-                if (this.chartElement.type === 'baseline') {
-                    const average =
-                        newData.reduce((s, c) => s + c.value, 0) / newData.length;
-                    this.chartElement.seriesOptions = {
-                        baseValue: { type: 'price', price: average },
-                    };
-                }
-            }
-
-            _updateData(newData) {
-                if (!this.chartElement) {
-                    return;
-                }
-                const candlestickTypeData = ['candlestick', 'bar'].includes(
-                    this.chartElement.type
-                );
-                this.chartElement.data = newData;
-                if (this.chartElement.type === 'baseline') {
-                    const average =
-                        newData.reduce((s, c) => s + c.value, 0) / newData.length;
-                    this.chartElement.seriesOptions = {
-                        baseValue: { type: 'price', price: average },
-                    };
-                }
-                this.chartElement.chart.timeScale().fitContent();
-            }
-
-        }
-
-        window.customElements.define(
-            'lightweight-chart',
-            LightweightChartWC
-        );
-    })();
 
     // Create the custom element for the lightweight chart
 </script>
