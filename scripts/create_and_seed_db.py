@@ -16,7 +16,11 @@ import time
 
 import duckdb
 from alpaca.data.historical import StockHistoricalDataClient
-from alpaca.data import StockBarsRequest, TimeFrame
+from alpaca.data import StockBarsRequest, TimeFrame, BarSet
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
 
 # api-key and secret-key are the Alpaca API
 USE_PAPER = os.getenv('USE_PAPER', '1') == '1'
@@ -39,13 +43,13 @@ for timeframe in [TimeFrame.Minute, TimeFrame.Day]:
     for ticker in tickers:
         db_path = f"dbs/{ticker}_{timeframe}_data.db"
         if os.path.exists(db_path):
-            print("Database already exists for", ticker)
+            logging.info("Database already exists for %r", ticker)
         else:
             conn = duckdb.connect(db_path)
             conn.sql(f"CREATE TABLE IF NOT EXISTS ticker_data (timestamp TIMESTAMP, ticker TEXT, open FLOAT, high FLOAT, low FLOAT, close FLOAT, volume FLOAT, vwap FLOAT, PRIMARY KEY (timestamp, ticker))")
             conn.close()
-            print("Database created for", ticker)
-            get_data_for_tickers.append(ticker)
+            logging.info("Database created for %r", ticker)
+            get_data_for_tickers.append(f'{ticker};{timeframe}')
 
 
 # create trades table
@@ -57,7 +61,7 @@ for trades_db_path in trades_db_paths:
         conn.close()
 
 
-def save_to_db(ticker, data):
+def save_to_db(ticker, data, timeframe):
     db_path = f"dbs/{ticker}_{timeframe}_data.db"
     conn = duckdb.connect(db_path)
     conn.execute(f"INSERT OR IGNORE INTO ticker_data VALUES {data}")
@@ -66,30 +70,44 @@ def save_to_db(ticker, data):
 
 curr_date = end - timedelta(days=1)
 while curr_date > start:
-    print("Downloading data for {}\nFrom {}-{}".format(get_data_for_tickers, curr_date, end))
-    request = StockBarsRequest(
-        symbol_or_symbols=get_data_for_tickers,
-        start=curr_date,
-        end=end,
-        timeframe=timeframe,
-    )
-    print("Request built -> sending request")
-    data = client.get_stock_bars(request)
+    time_frames = [x.split(';')[-1] for x in get_data_for_tickers]
+    tickers = [x.split(';')[0] for x in get_data_for_tickers]
+    for timeframe in time_frames:
+        logging.info("Downloading data for %r\nFrom %r-%r", tickers, curr_date.isoformat(), end.isoformat())
+        request = StockBarsRequest(
+            symbol_or_symbols=tickers,
+            start=curr_date,
+            end=end,
+            timeframe=TimeFrame.Minute if timeframe == '1min' else TimeFrame.Day,
+        )
+        logging.info("Request built -> sending request symbols=%r start=%r end=%r timeframe=%r", tickers, curr_date.isoformat(), end.isoformat(), timeframe)
+        bar_set_data = client.get_stock_bars(request)
 
-    # convert the data to duckdb expected format
-    # print("received data", data.data)
-    if data.data is None or get_data_for_tickers[0] not in data.data.keys():
-        print("No data received", data)
-    else:    
-        for ticker in get_data_for_tickers:
-            ticker_data = data.data.get(ticker, [])
-            for row in ticker_data:
-                row_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
-                save_to_db(ticker, row_str)
-            
-            print('Data saved for', ticker)
-    end = curr_date
-    curr_date = curr_date - timedelta(days=1)
+        # convert the data to duckdb expected format
+        # logging.info("received data", data.data)
+        if isinstance(bar_set_data, BarSet):
+            for ticker in tickers:
+                ticker_data = bar_set_data.data
+                for row in ticker_data:
+                    if isinstance(row, str):
+                        continue
+                    else:
+                        row_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
+                        save_to_db(ticker, row_str, timeframe)
+                
+                logging.info('Data saved for ticker=%r timeframe=%r timestamp=%r', ticker, timeframe, curr_date.isoformat())
+        elif bar_set_data.data is None or get_data_for_tickers[0] not in bar_set_data.data.keys():
+            logging.info("No data received %r", bar_set_data)
+        else:    
+            for ticker in get_data_for_tickers:
+                ticker_data = bar_set_data.data.get(ticker, [])
+                for row in ticker_data:
+                    row_str = f"('{row.timestamp}', '{ticker}', {row.open}, {row.high}, {row.low}, {row.close}, {row.volume}, {row.vwap})"
+                    save_to_db(ticker, row_str, timeframe)
+                
+                logging.info('Data saved for ticker=%r', ticker)
+        end = curr_date
+        curr_date = curr_date - timedelta(days=1)
     time.sleep(1)
 
-print("Data saved to database")
+logging.info("Data saved to database")
