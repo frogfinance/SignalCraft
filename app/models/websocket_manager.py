@@ -1,5 +1,8 @@
 from fastapi import WebSocket
 from typing import List
+import logging
+
+logger = logging.getLogger("app")
 
 class WebSocketManager:
     def __init__(self):
@@ -16,5 +19,9 @@ class WebSocketManager:
 
     async def send_message(self, message: dict):
         """Sends a message to all active WebSocket connections."""
+        logger.debug('Sending message to all active connections')
         for connection in self.active_connections:
-            await connection.send_json(message)
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.exception("Error sending message", exc_info=e)

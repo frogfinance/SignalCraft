@@ -37,7 +37,8 @@ class Signal:
             'price': float(self.price),
             'reason': self.reason,
             'strategy': self.strategy,
-            'ticker': self.ticker
+            'ticker': self.ticker,
+            'timestamp': self.timestamp.isoformat(),
         }
     
     def __str__(self):

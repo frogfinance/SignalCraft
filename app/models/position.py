@@ -1,3 +1,4 @@
+from datetime import datetime
 from alpaca.trading.enums import OrderSide
 
 class Position:
@@ -28,3 +29,17 @@ class Position:
     def __str__(self):
         return (f"{self.ticker}: {self.qty} shares @ ${self.entry_price:.2f} "
                 f"({self.pl_pct:.1%} P&L)")
+
+    def __repr__(self):
+        return dict(
+            ticker=self.ticker,
+            qty=self.qty,
+            entry_price=self.entry_price,
+            side=self.side,
+            entry_time=self.entry_time.isoformat() if isinstance(self.entry_time, datetime) else self.entry_time,
+            target_qty=self.target_qty,
+            pl_pct=self.pl_pct,
+            pl=self.pl,
+            current_price=self.current_price,
+            is_open=self.is_open
+        )

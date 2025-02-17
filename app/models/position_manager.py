@@ -71,6 +71,9 @@ class PositionManager:
                 if side == OrderSide.BUY and current_exposure >= position_size:
                     logger.debug("Target position size reached for %r (%.1f%% exposure)", ticker, current_exposure)
                     return 0, False
+                elif side == OrderSide.SELL and current_position.qty == 0:
+                    logger.debug("No shares to sell for %r", ticker)
+                    return 0, False
                 
                 # Don't add if position moving against us
                 if current_position.pl_pct < -0.02:  # -2% loss threshold
@@ -86,7 +89,7 @@ class PositionManager:
                 # New position - use full target size
                 target_shares = int(target_position_value / price)
                 logger.debug("New %.1f%% position: %d shares @ $%.2f", position_size, target_shares, price)
-                return target_shares, True
+                return target_shares, True if side == OrderSide.BUY else False
         except Exception as e:
             logger.info("Error calculating target position %r", ticker, exc_info=e)
             return 0, False
