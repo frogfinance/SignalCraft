@@ -57,7 +57,7 @@ class MarkovPredictionStrategy(BaseStrategy):
             signal.buy()
             signal.reason = 'Predicted close is significantly higher than current close'
         elif predicted_close < current_close * 0.99:
-            signal.sell()
+            signal.close()
             signal.reason = 'Predicted close is significantly lower than current close'
 
         logger.debug("Signal generated for %r: %r", ticker, signal)

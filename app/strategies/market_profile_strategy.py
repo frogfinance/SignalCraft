@@ -97,7 +97,7 @@ class MarketProfileStrategy(BaseStrategy):
 
         # Conditions for a sell signal
         if latest_row['rsi'] > self.high_rsi_threshold and latest_row['close'] < latest_row['vwap'] and latest_row['macd'] < latest_row['signal_line']:
-            signal.sell()
+            signal.close()
             signal.reason = f'Overbought (RSI > {self.high_rsi_threshold}), price below VWAP, and MACD bearish crossover.'
 
         return signal

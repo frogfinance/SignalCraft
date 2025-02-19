@@ -92,7 +92,7 @@ class SupportResistanceStrategy(BaseStrategy):
         # Sell signal: Price is near resistance
         for resistance in resistance_levels:
             if (current_price >= resistance * (1 - self.resistance_threshold)):
-                signal.sell()
+                signal.close()
                 signal.reason = f"Price near resistance at {resistance:.2f}"
                 return signal
 
