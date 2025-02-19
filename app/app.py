@@ -13,7 +13,7 @@ from app.algo_trader import TradingSystem
 from app.utils import log_util
 from alpaca.trading import OrderSide
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
 
 trading_system = None
 
@@ -162,11 +162,17 @@ async def websocket_backtest(websocket: WebSocket):
                 await websocket.send_json({"error": "Missing ticker or strategy"})
                 continue
 
-            # Log the received message
-            logger.info(f"Starting backtest for: {ticker} using {strategy}")
+            # check if the backtest is already running and if so tell the frontend
+            if ticker in trading_system.backtest_system.running_backtests:
+                await websocket.send_json({"is_backtest_running": True})
+            else:
+                # Log the received message
+                logger.info(f"Starting backtest for: {ticker} using {strategy}")
 
-            # Start the backtest in a background task
-            asyncio.create_task(trading_system.backtest_system.start_backtest_for_ticker(ticker, strategy))
+                # Start the backtest in a background task
+                asyncio.create_task(trading_system.backtest_system.start_backtest_for_ticker(ticker, strategy))
+
+                await websocket.send_json({"message": "Backtest started."})
 
     except WebSocketDisconnect:
         logger.warning("WebSocket disconnected.")
