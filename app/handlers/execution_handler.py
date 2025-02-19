@@ -135,7 +135,7 @@ class ExecutionHandler():
         """Simulate trade execution and determine outcome."""
         order = dict()
         order.update(signal.__dict__())
-        order_generated = False
+        order_generated = False 
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
         should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
         if should_close_position is True:

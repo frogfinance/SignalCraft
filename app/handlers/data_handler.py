@@ -85,7 +85,7 @@ class DataHandler():
                     logger.error("Error fetching market data for ticker: %r", ticker, exc_info=e)
                 
                 if data is None or data.data is None:
-                    logger.info("No data received", data)
+                    logger.info("No data received %r", data)
                 else:    
                     logger.info("Data received for %r from %r to %r", ticker, curr_start, curr_end)
                     self.save_market_data(data.data)
@@ -122,7 +122,8 @@ class DataHandler():
     def get_backtest_data(self):
         data = dict()
         for ticker in self.tickers:
-            conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+            conn_str = f"{self.db_base_path}/{ticker}_{self.timeframe.__str__()}_data.db"
+            conn = duckdb.connect(conn_str, read_only=True)
             ticker_data = conn.sql(f"SELECT * FROM ticker_data ORDER BY timestamp ASC").df()
             conn.close()
             data[ticker] = ticker_data
@@ -197,7 +198,7 @@ class DataHandler():
         """
         Fetch historical data for the specified ticker and timeframe.
         """
-        conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db")
+        conn = duckdb.connect(f"{self.db_base_path}/{ticker}_{self.timeframe.__str__()}_data.db")
         query = f"SELECT * FROM ticker_data WHERE timestamp >= '{start}' AND timestamp <= '{end}' ORDER BY timestamp ASC"
         try:
             data = conn.sql(query).df()
@@ -257,7 +258,7 @@ class DataHandler():
             value_str = value_strs[0]
         else:
             value_str = ", ".join(value_strs)
-        db_path = f"{self.db_base_path}/{ticker}_{self.timeframe}_data.db"
+        db_path = f"{self.db_base_path}/{ticker}_{self.timeframe.__str__()}_data.db"
         conn = duckdb.connect(db_path)
         should_retry = False
         try:
