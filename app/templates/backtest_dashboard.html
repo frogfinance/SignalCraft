@@ -6,6 +6,7 @@
 {% endblock %}
 {% block content %}
 <div class="container mx-auto p-6 bg-gray-900 min-h-screen flex">
+    <div id="flash-message-container" class="fixed top-5 right-5 z-50 flex flex-col space-y-2"></div>
     <!-- Left Sidebar Form -->
     <div class="w-1/4 bg-gray-800 p-6 rounded-lg shadow-md">
         <h2 class="text-xl font-bold text-gray-200 mb-4">Backtest Parameters</h2>
@@ -45,6 +46,8 @@
                 <tr>
                     <th class="py-2">Ticker</th>
                     <th class="py-2">Quantity</th>
+                    <th class="py-2">Price</th>
+                    <th class="py-2">Direction</th>
                     <th class="py-2">P&L</th>
                 </tr>
             </thead>
@@ -53,7 +56,9 @@
                 <tr>
                     <td class="py-2">{{ position.ticker }}</td>
                     <td class="py-2">{{ position.qty }}</td>
-                    <td class="py-2" style="color: {{ 'green' if position.pnl >= 0 else 'red' }};">$ {{ position.pl }} (%{{ position.pl_pct }})</td>
+                    <td class="py-2">{{ position.price }}</td>
+                    <td class="py-2">{{ position.direction }}</td>
+                    <td class="py-2" style="color: {{ 'green' if position.pl >= 0 else 'red' }};">$ {{ position.pl }} (%{{ position.pl_pct }})</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -63,10 +68,63 @@
 {% endblock %}
 
 {% block extra_js %}
+<script>
+    function showFlashMessage(message, type = "info") {
+        const container = document.getElementById("flash-message-container");
+    
+        // Create message div
+        const msgDiv = document.createElement("div");
+        msgDiv.className = "px-4 py-3 rounded-lg shadow-lg text-white flex items-center opacity-0 transition-all duration-300 transform translate-x-10";
+        
+        // Apply different styles based on message type
+        if (type === "success") {
+            msgDiv.classList.add("bg-green-600");
+        } else if (type === "error") {
+            msgDiv.classList.add("bg-red-600");
+        } else {
+            msgDiv.classList.add("bg-blue-600");
+        }
+    
+        msgDiv.textContent = message;
+        container.appendChild(msgDiv);
+    
+        // Slide in effect
+        setTimeout(() => {
+            msgDiv.classList.remove("translate-x-10", "opacity-0");
+            msgDiv.classList.add("translate-x-0", "opacity-100");
+        }, 10);
+    
+        // Remove after 5 seconds with fade-out
+        setTimeout(() => {
+            msgDiv.classList.add("opacity-0", "translate-x-10");
+            setTimeout(() => msgDiv.remove(), 300);
+        }, 5000);
+    }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
 
 <script type="module">
     const { createChart, BarSeries, CandlestickSeries } = LightweightCharts;
+
+    class TradeMarkerPlugin {
+        constructor(series) {
+            this.series = series; // Candlestick series
+            this.trades = []; // Stores trade execution data
+        }
+    
+        updateTrades(newTrade) {
+            this.trades = [...this.trades, newTrade];
+            this.series.chart().applyOptions({ plugins: [this] });
+        }
+    
+        timeAxisViews(timeScale) {
+            return this.trades.map((trade) => ({
+                time: trade.time,
+                content: trade.side === "buy" ? "🟢 BUY" : "🔴 SELL",
+                position: "above-bar",
+            }));
+        }
+    }       
     
     const ws = new WebSocket((window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws/backtest");
 
@@ -74,6 +132,7 @@
 
     let seriesData = null;
     let chart = null;
+    let tradeMarkerPlugin = null;
 
     const configueBacktestChart = function(elem, data) {
         if (seriesData) {
@@ -88,10 +147,28 @@
             chart = createChart(element, {
                 width: containerWidth,
                 height: containerHeight,
+                layout: {
+                    background: { color: '#222' },
+                    textColor: '#DDD',
+                },
+                grid: {
+                    vertLines: { color: '#444' },
+                    horzLines: { color: '#444' },
+                },
+            });
+            // Setting the border color for the vertical axis
+            chart.priceScale().applyOptions({
+                borderColor: '#71649C',
+            });
+
+            // Setting the border color for the horizontal axis
+            chart.timeScale().applyOptions({
+                borderColor: '#71649C',
             });
             seriesData = chart.addSeries(CandlestickSeries);
             seriesData.setData(data);
             chart.timeScale().fitContent();
+            tradeMarkerPlugin = new TradeMarkerPlugin(chartElement.candleSeries);
         }
     };
 
@@ -116,7 +193,9 @@
                 row.innerHTML = `
                     <td class="py-2">${position.ticker}</td>
                     <td class="py-2">${position.qty}</td>
-                    <td class="py-2" style="color: ${position.pnl >= 0 ? 'green' : 'red'};">$${position.pl.toFixed(2)} (%${position.pl_pct})}</td>
+                    <td class="py-2">${position.price}</td>
+                    <td class="py-2">${position..direction}</td>
+                    <td class="py-2" style="color: ${position.pl >= 0 ? 'green' : 'red'};">$${position.pl.toFixed(2)} (%${position.pl_pct})</td>
                 `;
                 table.appendChild(row);
             });
@@ -134,6 +213,23 @@
             
             // Properly update the Web Component chart
             configueBacktestChart("backtest-chart", priceData);
+        }
+
+        if (data.trade) {
+            const trade = dict(Math.floor(new Date(data.trade.timestamp).getTime() / 1000),
+                side: data.trade.side,
+            });
+    
+            tradeMarkerPlugin.updateTrades(trade);
+        }
+
+        if (data.is_backtest_running) {
+
+        }
+
+        // ✅ Show Flash Message
+        if (data.message) {
+            showFlashMessage(data.message.text, data.message.type);
         }
     };
 
