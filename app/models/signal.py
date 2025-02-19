@@ -3,7 +3,7 @@ from alpaca.trading.enums import OrderSide
 
 class Signal:
 
-    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None, price=None):
+    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None, price=None, direction=None):
         self.action = 'buy' if buy else 'sell' if sell else None
         self.reason = reason
         self.strategy = strategy
@@ -14,18 +14,26 @@ class Signal:
         self.score = None
         self.stop_loss = None
         self.take_profit = None
+        self.direction = None
 
     def __str__(self):
         return f"Signal(action={self.action}, reason={self.reason}, strategy={self.strategy})"
     
     def buy(self):
         self.action = 'buy'
+        self.direction = 'long'
+        return self
+    
+    def close(self):
+        self.action = 'sell'
+        self.direction = 'long'
         return self
     
     def sell(self):
         self.action = 'sell'
+        self.direction = 'short'
         return self
-    
+
     @property
     def side(self):
         side = OrderSide.BUY if self.action == 'buy' else OrderSide.SELL if self.action == 'sell' else None

@@ -350,7 +350,7 @@ class PositionManager:
                     logger.debug("No position to sell")
                     return
             position = Position(
-                order['ticker'], order['qty'], order['price'], order['side'], datetime.now()
+                order['ticker'], order['qty'], order['price'], order['side'], datetime.now(), order['direction']
             )
             self.positions[position.ticker] = position
             if order['side'] == OrderSide.SELL:
