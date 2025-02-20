@@ -47,6 +47,7 @@
                     <th class="py-2">Ticker</th>
                     <th class="py-2">Quantity</th>
                     <th class="py-2">Price</th>
+                    <th class="py-2">Current Price</th>
                     <th class="py-2">Direction</th>
                     <th class="py-2">P&L</th>
                 </tr>
@@ -56,11 +57,28 @@
                 <tr>
                     <td class="py-2">{{ position.ticker }}</td>
                     <td class="py-2">{{ position.qty }}</td>
-                    <td class="py-2">{{ position.price }}</td>
+                    <td class="py-2">{{ position.entry_price }}</td>
+                    <td class="py-2">{{ position.current_price }}</td>
                     <td class="py-2">{{ position.direction }}</td>
                     <td class="py-2" style="color: {{ 'green' if position.pl >= 0 else 'red' }};">$ {{ position.pl }} (%{{ position.pl_pct }})</td>
                 </tr>
                 {% endfor %}
+            </tbody>
+        </table>
+        <!-- Trades Table -->
+        <h2 class="text-xl font-bold text-gray-200 mt-4">Trades</h2>
+        <table class="w-full text-left text-white mt-2">
+            <thead>
+                <tr>
+                    <th class="py-2">Ticker</th>
+                    <th class="py-2">Quantity</th>
+                    <th class="py-2">Price</th>
+                    <th class="py-2">Direction</th>
+                    <th class="py-2">Side</th>
+                </tr>
+            </thead>
+            <tbody id="trades-table">
+                
             </tbody>
         </table>
     </div>
@@ -70,6 +88,7 @@
 {% block extra_js %}
 <script>
     function showFlashMessage(message, type = "info") {
+        if (!message) return;
         const container = document.getElementById("flash-message-container");
     
         // Create message div
@@ -114,7 +133,7 @@
     
         updateTrades(newTrade) {
             this.trades = [...this.trades, newTrade];
-            this.series.chart().applyOptions({ plugins: [this] });
+            this.series.applyOptions({ plugins: [this] });
         }
     
         timeAxisViews(timeScale) {
@@ -125,6 +144,36 @@
             }));
         }
     }       
+
+    const updateTradesTable = function(trade) {
+        const table = document.getElementById("trades-table");
+        const row = document.createElement("tr");
+        row.innerHTML = `
+            <td class="py-2">${trade.ticker}</td>
+            <td class="py-2">${trade.qty}</td>
+            <td class="py-2">${trade.price}</td>
+            <td class="py-2">${trade.direction}</td>
+            <td class="py-2">${trade.side}</td>
+        `;
+        table.appendChild(row);
+    };
+
+    const updatePositionsTable = function(positions) {
+        const table = document.getElementById("positions-table");
+        table.innerHTML = "";
+        positions.forEach(position => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+                <td class="py-2">${position.ticker}</td>
+                <td class="py-2">${position.qty}</td>
+                <td class="py-2">${position.entry_price}</td>
+                <td class="py-2">${position.current_price}</td>
+                <td class="py-2">${position.direction}</td>
+                <td class="py-2" style="color: ${position.pl >= 0 ? 'green' : 'red'};">$${position.pl.toFixed(2)} (%${position.pl_pct})</td>
+            `;
+            table.appendChild(row);
+        });
+    };
     
     const ws = new WebSocket((window.location.protocol === "https:" ? "wss://" : "ws://") + window.location.host + "/ws/backtest");
 
@@ -168,7 +217,7 @@
             seriesData = chart.addSeries(CandlestickSeries);
             seriesData.setData(data);
             chart.timeScale().fitContent();
-            tradeMarkerPlugin = new TradeMarkerPlugin(chartElement.candleSeries);
+            tradeMarkerPlugin = new TradeMarkerPlugin(seriesData);
         }
     };
 
@@ -186,19 +235,9 @@
 
         // Update positions table
         if (data.positions) {
-            const table = document.getElementById("positions-table");
-            table.innerHTML = "";
-            data.positions.forEach(position => {
-                const row = document.createElement("tr");
-                row.innerHTML = `
-                    <td class="py-2">${position.ticker}</td>
-                    <td class="py-2">${position.qty}</td>
-                    <td class="py-2">${position.price}</td>
-                    <td class="py-2">${position..direction}</td>
-                    <td class="py-2" style="color: ${position.pl >= 0 ? 'green' : 'red'};">$${position.pl.toFixed(2)} (%${position.pl_pct})</td>
-                `;
-                table.appendChild(row);
-            });
+            if (data.positions.length > 0) {
+                updatePositionsTable(data.positions);
+            }
         }
 
         // Update chart with new ticker data
@@ -216,11 +255,13 @@
         }
 
         if (data.trade) {
-            const trade = dict(Math.floor(new Date(data.trade.timestamp).getTime() / 1000),
+            const trade = {
+                time: Math.floor(new Date(data.trade.timestamp).getTime() / 1000),
                 side: data.trade.side,
-            });
-    
+            };
+        
             tradeMarkerPlugin.updateTrades(trade);
+            updateTradesTable(data.trade);
         }
 
         if (data.is_backtest_running) {
