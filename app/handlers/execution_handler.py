@@ -184,3 +184,4 @@ class ExecutionHandler():
         """Update backtest positions."""
         self.position_manager.check_positions(ticker_to_price_map)
         self.position_manager.update_backtest_account_position_values(timestamp, ticker_to_price_map)
+        
