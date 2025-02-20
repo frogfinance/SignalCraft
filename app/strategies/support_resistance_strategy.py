@@ -5,7 +5,6 @@ import numpy as np
 import logging
 from scipy.signal import argrelextrema
 from typing import Dict
-from alpaca.data import TimeFrame
 
 logger = logging.getLogger("app")
 
@@ -19,8 +18,8 @@ class SupportResistanceStrategy(BaseStrategy):
         self.display_name = 'Support & Resistance'
         self.time_interval = "15min"
 
-    def resample_data(self, data: pd.DataFrame, interval="60min") -> pd.DataFrame:
-        """Resample minute-level data into 60-minute intervals."""
+    def resample_data(self, data: pd.DataFrame, interval="4hour") -> pd.DataFrame:
+        """Resample minute-level data into 4-hour intervals."""
         data['timestamp'] = pd.to_datetime(data['timestamp'])
         data.set_index('timestamp', inplace=True)
 
