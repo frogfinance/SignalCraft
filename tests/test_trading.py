@@ -5,7 +5,6 @@ from unittest.mock import  Mock
 # Add the root directory to the PYTHONPATH
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database import save_market_data
 from app.handlers.execution_handler import ExecutionHandler
 from app.handlers.data_handler import DataHandler
 from app.handlers.strategy_handler import StrategyHandler
@@ -80,7 +79,6 @@ async def test_trading_system(monkeypatch):
         # Fetch data - monkeypatch will return `generate_next_mock_data`
         logging.info(f"Fetching data for {curr_date}")
         data = data_handler.fetch_data()
-        save_market_data(data, db_base_path=data_handler.db_base_path)
         if data:
             signals = strategy_handler.generate_signals()
             execution_handler.handle_execution(signals)
@@ -100,6 +98,6 @@ if __name__ == "__main__":
     # Reset the databases after the test
     # use last_known_real_candle to reset the database to the last known real candle
     for ticker, timestamp in last_known_real_candle.items():
-        conn = duckdb.connect(f"tests/dbs/{ticker}_1min_data.db")
+        conn = duckdb.connect(f"tests/data/{ticker}_1min_data.db")
         conn.execute(f"DELETE FROM ticker_data WHERE timestamp > '{timestamp}'")
         conn.close()
