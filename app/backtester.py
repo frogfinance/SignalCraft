@@ -204,21 +204,7 @@ class BacktestingSystem():
         self.tickers = [ticker]
         task = asyncio.create_task(self.run_backtest())
         self.running_backtests[ticker] = task
-
-    # def start_backtest_for_ticker(self, ticker, strategy):
-    #     """Starts the backtest task in the background."""
-    #     if self.task and not self.task.done():
-    #         self.task.cancel()  # Cancel any existing task before starting a new one
-    #     self.tickers = [ticker]
-    #     self.strategy_handler.tickers = [ticker]
-    #     self.data_handler.tickers = [ticker]
-    #     if (strategy in self.strategy_handler.strategies):
-    #         self.strategy_handler.strategies = {strategy: self.strategy_handler.strategies[strategy]}
-    #     else:
-    #         raise ValueError(f"Strategy {strategy} not found in strategy handler")
         
-    #     self.task = asyncio.create_task(self.run_backtest())
-
 
     def stop_backtest(self):
         """Stops the running backtest."""
