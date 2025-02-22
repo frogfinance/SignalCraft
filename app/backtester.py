@@ -178,10 +178,11 @@ class BacktestingSystem():
 
                     # **Update daily_candle_index to mark the start of a new day**
                     daily_candle_index = candle_index
-
+                    # **Check positions at the start of the day**
+                    self.execution_handler.position_manager.check_positions(ticker_to_price_map) 
                 except Exception as e:
                     logger.exception("Error sending daily backtest data to WebSocket", exc_info=e)
-
+            
             await asyncio.sleep(0)
 
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
@@ -204,7 +205,7 @@ class BacktestingSystem():
         self.tickers = [ticker]
         task = asyncio.create_task(self.run_backtest())
         self.running_backtests[ticker] = task
-        
+
 
     def stop_backtest(self):
         """Stops the running backtest."""
