@@ -101,8 +101,10 @@ class TradingSystem:
             # get most recent price data for position checks
             ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
 
-            # check positions
-            self.execution_handler.position_manager.check_positions(ticker_to_price_map)  # Check positions
+            # check position at the 1hr interval of the market open using last candle from ticker_to_price_map
+            if ticker_to_price_map:
+                if ticker_to_price_map[tickers[0]]['timestamp'].minute == 30:
+                    self.execution_handler.position_manager.check_positions(ticker_to_price_map)  # Check positions
             
             logger.info("Sleeping for 60 seconds...")
             await asyncio.sleep(60)  # Sleep for 300 seconds before running again
