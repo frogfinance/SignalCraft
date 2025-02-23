@@ -82,12 +82,12 @@ class DataHandler():
                 try:
                     data = self.data_store.get_stock_bars(request)
                 except Exception as e:
-                    logger.error("Error fetching market data for ticker: %r", ticker, exc_info=e)
+                    logger.error("Error fetching market data for ticker: %r", self.tickers, exc_info=e)
                 
                 if data is None or data.data is None:
                     logger.info("No data received %r", data)
                 else:    
-                    logger.info("Data received for %r from %r to %r", ticker, curr_start, curr_end)
+                    logger.info("Data received for %r from %r to %r", self.tickers, curr_start, curr_end)
                     self.save_market_data(data.data)
                 logger.info(f"Data saved for tickers")
                 curr_start = curr_end
