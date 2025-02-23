@@ -115,12 +115,15 @@ class PositionManager:
             logger.error("Error checking position %r", ticker, exc_info=e)
             return False
     
+    
     def check_positions(self, ticker_to_price_map):
+        positions_to_close = {}
         for ticker, position in self.positions.items():
             signal = Signal(strategy="stop-loss", ticker=ticker, price=ticker_to_price_map[ticker])
             if position is not None and self.should_close_position(ticker, signal=signal) is True:
-                logger.info(f"Detected signal to close position for {ticker}")
-                self.close_position(ticker, signal=signal)
+                positions_to_close[ticker] = signal
+        return positions_to_close
+        
 
     def close_position(self, ticker, signal=None):
         """Close an existing position"""
