@@ -27,12 +27,18 @@ def gen_logging_config():
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stdout",
             },
+            "file": {
+                "formatter": "default",
+                "class": "logging.FileHandler",
+                "filename": "app.log",
+                "mode": "a",
+            },
         },
         "loggers": {
             "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
             "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
             "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-            "app": {"handlers": ["default"], "level": "INFO", "propagate": False},
+            "app": {"handlers": ["default", "file"], "level": "INFO", "propagate": False},
         },
     }
     return logging_config
