@@ -55,6 +55,7 @@ class TradingSystem:
             self.strategy_handler = backtest_system.strategy_handler
             logger.info("AlgoTrader starting backtest mode ->")
             self.backtest_system = backtest_system
+            # self.data_handler.fetch_data()
         else:
             await self.run_algo_trader()
 
