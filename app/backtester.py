@@ -28,6 +28,11 @@ class BacktestingSystem():
         self.ws_manager = WebSocketManager()
         self.task = None
 
+    def change_tickers(self, tickers):
+        self.tickers = tickers
+        self.data_handler.tickers = tickers
+        self.strategy_handler.tickers = tickers
+
     def is_market_open(self, timestamp):
         if timestamp.weekday() >= 5:
             return False
@@ -104,69 +109,64 @@ class BacktestingSystem():
         self.report_data_period(backtest_ticker_data)
 
         while candle_index <= total_number_candles:
-            if self.task and self.task.cancelled():
-                logger.warning("Task cancelled!")
-                return  # Stop if the task is cancelled
-
-            logger.debug("Running backtest for candle %r / %r", candle_index, total_number_candles)
-
-            backtest_data["end"] = backtest_ticker_data["timestamp"].iloc[candle_index]
-            candle_index += 1
-
-            # Skip if the market is closed
-            if not self.is_market_open(backtest_data["end"]):
-                continue
-
-            # Generate trading signals
             try:
-                signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
-            except Exception as e:
-                logger.exception("Error generating signals", exc_info=e)
-                
-            for signal in signal_data.values():
-                order = None
+                if self.task and self.task.cancelled():
+                    logger.warning("Task cancelled!")
+                    return  # Stop if the task is cancelled
+
+                logger.debug("Running backtest for candle %r / %r", candle_index, total_number_candles)
+
+                backtest_data["end"] = backtest_ticker_data["timestamp"].iloc[candle_index]
+                candle_index += 1
+
+                # Skip if the market is closed
+                if not self.is_market_open(backtest_data["end"]):
+                    continue
+
+                # Generate trading signals
                 try:
-                    order = self.execution_handler.run_backtest_trade(signal)
+                    signal_data = self.strategy_handler.generate_signals(is_backtest=True, backtest_data=backtest_data)
                 except Exception as e:
-                    logger.exception("Error executing backtest trade", exc_info=e)
+                    logger.exception("Error generating signals", exc_info=e)
+                    
+                await self.process_signals_and_trades(backtest_data, signal_data)
 
-                if order is not None:
-                    order['timestamp'] = backtest_data["end"].isoformat()
-                    self.trade_results.append(order)
-                    try:
-                        logger.info("Trade outcome: %r", order)
-                        trade_message = {
-                            "trade": {
-                                "timestamp": order["timestamp"],
-                                "ticker": order["ticker"],
-                                "price": order["price"],
-                                "side": order["side"].value,
-                                "qty": order["qty"],
-                                "direction": order["direction"]
-                            },
-                            "balance": self.execution_handler.position_manager.cash_balance,
-                            "positions": [p.__repr__() for p in self.execution_handler.position_manager.positions.values()],
-                            "ticker_data": None,  # No new ticker data yet,
-                            "message": dict(type="success", text=f"Trade executed for {order['ticker']}")
-                        }
-                        await self.ws_manager.send_message(trade_message)
-                        logger.info("Trade message sent")
-                    except Exception as e:
-                        logger.exception("Error sending trade data to WebSocket", exc_info=e)
+                # New day detected, send full-day data
+                if backtest_data["end"].date() != curr_date.date():
+                    logger.debug("New day detected: %r", backtest_data["end"])
+                    curr_date = backtest_data["end"]
 
-            # **New day detected, send full-day data**
-            if backtest_data["end"].date() != curr_date.date():
-                logger.debug("New day detected: %r", backtest_data["end"])
-                curr_date = backtest_data["end"]
+                    await self.send_daily_backtest_update(backtest_data, backtest_ticker_data, candle_index, daily_candle_index)
+                    
+                    # Update daily_candle_index to mark the start of a new day
+                    daily_candle_index = candle_index
+                    # Check positions at the start of the day
+                    self.execution_handler.position_manager.check_positions(ticker_to_price_map) 
 
-                try:
+                if backtest_data['end'].minute == 30:
                     ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                     self.execution_handler.update_backtest_positions(backtest_data["end"], ticker_to_price_map=ticker_to_price_map)
+                    positions_to_close = self.execution_handler.position_manager.check_positions(ticker_to_price_map)
+                    if len(positions_to_close.keys()) > 0:
+                        self.process_signals_and_trades(backtest_data, positions_to_close)
+                    
+                await asyncio.sleep(0)
+            except Exception as e:
+                logger.exception("Error running backtest", exc_info=e)
 
-                    # Slice full day's data
-                    ticker_data = self.serialize_ticker_data(backtest_ticker_data.iloc[daily_candle_index:candle_index])
+        logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
+        logger.info("Backtest completed. Results: %r", self.trade_results)
 
-                    daily_message = {
+
+    async def send_daily_backtest_update(self, backtest_data, backtest_ticker_data, candle_index, daily_candle_index):
+        try:
+            ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
+            self.execution_handler.update_backtest_positions(backtest_data["end"], ticker_to_price_map=ticker_to_price_map)
+
+            # Slice full day's data
+            ticker_data = self.serialize_ticker_data(backtest_ticker_data.iloc[daily_candle_index:candle_index])
+
+            daily_message = {
                         "trade": None,  # No specific trade at day start
                         "balance": self.execution_handler.position_manager.cash_balance,
                         "positions": [p.__repr__() for p in self.execution_handler.position_manager.positions.values()],
@@ -174,19 +174,47 @@ class BacktestingSystem():
                         "ticker_data": ticker_data,  # Send all candles from the last detected day
                     }
 
-                    await self.ws_manager.send_message(daily_message)
+            await self.ws_manager.send_message(daily_message)
 
-                    # **Update daily_candle_index to mark the start of a new day**
-                    daily_candle_index = candle_index
-                    # **Check positions at the start of the day**
-                    self.execution_handler.position_manager.check_positions(ticker_to_price_map) 
-                except Exception as e:
-                    logger.exception("Error sending daily backtest data to WebSocket", exc_info=e)
-            
-            await asyncio.sleep(0)
+        except Exception as e:
+            logger.exception("Error sending daily backtest data to WebSocket", exc_info=e)
 
-        logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
-        logger.info("Backtest completed. Results: %r", self.trade_results)
+
+    async def process_signals_and_trades(self, backtest_data, signal_data):
+        for signal in signal_data.values():
+            order = None
+            try:
+                order = self.execution_handler.run_backtest_trade(signal)
+            except Exception as e:
+                logger.exception("Error executing backtest trade", exc_info=e)
+
+            if order is not None:
+                await self.handle_trade(backtest_data, order)
+
+    
+    async def handle_trade(self, backtest_data, order):
+        order['timestamp'] = backtest_data["end"].isoformat()
+        self.trade_results.append(order)
+        try:
+            logger.info("Trade outcome: %r", order)
+            trade_message = {
+                "trade": {
+                    "timestamp": order["timestamp"],
+                    "ticker": order["ticker"],
+                    "price": order["price"],
+                    "side": order["side"].value,
+                    "qty": order["qty"],
+                    "direction": order["direction"]
+                },
+                "balance": self.execution_handler.position_manager.cash_balance,
+                "positions": [p.__repr__() for p in self.execution_handler.position_manager.positions.values()],
+                "ticker_data": None,  # No new ticker data yet,
+                "message": dict(type="success", text=f"Trade executed for {order['ticker']}")
+            }
+            await self.ws_manager.send_message(trade_message)
+            logger.info("Trade message sent")
+        except Exception as e:
+            logger.exception("Error sending trade data to WebSocket", exc_info=e)
 
 
     def start_backtest(self):
@@ -203,6 +231,7 @@ class BacktestingSystem():
         if ticker in self.running_backtests:
             self.running_backtests[ticker].cancel()  # Cancel any existing task
         self.tickers = [ticker]
+        self.change_tickers([ticker])
         task = asyncio.create_task(self.run_backtest())
         self.running_backtests[ticker] = task
 
