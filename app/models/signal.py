@@ -3,8 +3,8 @@ from alpaca.trading.enums import OrderSide
 
 class Signal:
 
-    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None, price=None, direction=None, timestamp=None):
-        self.action = 'buy' if buy else 'sell' if sell else None
+    def __init__(self, buy=False, sell=False, reason=None, strategy=None, ticker=None, price=None, direction=None, timestamp=None, action=None):
+        self.action = action if action else 'buy' if buy else 'sell' if sell else None
         self.reason = reason
         self.strategy = strategy
         self.price = f"{float(price):.2f}" if price else None

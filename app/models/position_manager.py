@@ -115,13 +115,20 @@ class PositionManager:
             logger.error("Error checking position %r", ticker, exc_info=e)
             return False
     
-    
     def check_positions(self, ticker_to_price_map):
         positions_to_close = {}
         for ticker, position in self.positions.items():
-            signal = Signal(strategy="stop-loss", ticker=ticker, price=ticker_to_price_map[ticker])
-            if position is not None and self.should_close_position(ticker, signal=signal) is True:
-                positions_to_close[ticker] = signal
+            if ticker in ticker_to_price_map:
+                signal = Signal(
+                    strategy="stop-loss", 
+                    ticker=ticker, 
+                    price=ticker_to_price_map[ticker],
+                    action=OrderSide.SELL, 
+                )
+                
+                if position is not None and self.should_close_position(ticker, signal=signal) is True:
+                    positions_to_close[ticker] = signal
+                    logger.info(f"Position {ticker} flagged for closing at price {signal.price}")
         return positions_to_close
         
 
@@ -150,18 +157,27 @@ class PositionManager:
             logger.info("Error message: %r", str(e))
             return None
 
+
     def close_position_backtest(self, ticker, signal):
         """Close a position during backtesting."""
         position = self.positions.get(ticker)
         if not position:
             return
 
-        total_cost = position.qty * signal.price
-        self.cash_balance -= total_cost
+        # Calculate proceeds from selling
+        total_proceeds = position.qty * signal.price
+        self.cash_balance += total_proceeds  # ADD to cash balance when selling
+        
+        # Calculate profit/loss
+        pl = (signal.price - position.entry_price) * position.qty
+        logger.info("Closing position %r: P&L $%d", ticker, f"{pl}:.2f")
+        
+        # Close position
         position.qty = 0
         position.is_open = False
         del self.positions[ticker] 
         return position
+
 
     def get_account_info(self):
         """Get account information"""
@@ -334,40 +350,72 @@ class PositionManager:
         except Exception as e:
             logger.info("Error updating positions: %r", str(e))
             return {}
-    
+        
     def update_positions_backtest(self, order, show_status=False):
         """Update positions for backtesting, recalculating unrealized P&L."""
         
         if order is None:
             return
-        else:
-            total_cost = float(order['qty']) * float(order['price'])
-            if order['side'] == OrderSide.BUY:
-                self.cash_balance -= total_cost
-                if self.cash_balance < 0:
-                    self.cash_balance += total_cost
-                    logger.debug("Insufficient funds to buy")
-                    return
-            elif order['side'] == OrderSide.SELL:
-                if order['ticker'] not in self.positions:
-                    logger.debug("No position to sell")
-                    return
-            position = Position(
-                order['ticker'], order['qty'], order['price'], order['side'], datetime.now(), order['direction']
-            )
-            self.positions[position.ticker] = position
-            if order['side'] == OrderSide.SELL:
-                self.cash_balance += total_cost
-                position.is_open = False
-                self.positions[position.ticker] = position
-            elif order['side'] == OrderSide.BUY:
-                self.cash_balance -= total_cost
-                position.is_open = True
-                self.positions[position.ticker] = position
+            
+        total_cost = float(order['qty']) * float(order['price'])
+        ticker = order['ticker']
         
-        latest_price = order['price']
-        position = self.positions.get(order['ticker'])
-        position.update_pl(latest_price)
+        if order['side'] == OrderSide.BUY:
+            # Check if we can afford it
+            if self.cash_balance < total_cost:
+                logger.debug("Insufficient funds to buy")
+                return
+                
+            # Subtract from cash balance
+            self.cash_balance -= total_cost
+            
+            # Create or update position
+            if ticker in self.positions:
+                # Update existing position
+                position = self.positions[ticker]
+                # Calculate new average entry price
+                total_shares = position.qty + float(order['qty'])
+                total_cost_basis = (position.qty * position.entry_price) + total_cost
+                new_avg_price = total_cost_basis / total_shares if total_shares > 0 else order['price']
+                
+                position.qty = total_shares
+                position.entry_price = new_avg_price
+            else:
+                # Create new position
+                position = Position(
+                    ticker, float(order['qty']), float(order['price']), 
+                    order['side'], datetime.now(), order.get('direction', None)
+                )
+                
+            position.is_open = True
+            self.positions[ticker] = position
+            
+        elif order['side'] == OrderSide.SELL:
+            if ticker not in self.positions:
+                logger.debug(f"No position to sell for {ticker}")
+                return
+                
+            position = self.positions[ticker]
+            if position.qty < float(order['qty']):
+                logger.debug(f"Not enough shares to sell for {ticker}")
+                return
+                
+            # Add to cash balance
+            self.cash_balance += total_cost
+            
+            # Update position
+            position.qty -= float(order['qty'])
+            if position.qty <= 0:
+                position.is_open = False
+                del self.positions[ticker]
+            else:
+                position.is_open = True
+                self.positions[ticker] = position
+        
+        # Update P&L for the position if it still exists
+        if ticker in self.positions:
+            position: Position = self.positions[ticker]
+            position.update_pl(float(order['price']))
     
 
     def update_backtest_account_position_values(self, timestamp, ticker_to_price_mapping):
