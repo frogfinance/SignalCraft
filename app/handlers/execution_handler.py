@@ -139,7 +139,7 @@ class ExecutionHandler():
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
         should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
         if should_close_position is True:
-            logger.info("Detected signal to close position for %r"< signal.ticker)
+            logger.info("Detected signal to close position for %r", signal.ticker)
             order['qty'] = self.position_manager.positions[signal.ticker].qty
             order['side'] = OrderSide.SELL
             order_generated = True
