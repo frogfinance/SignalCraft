@@ -143,16 +143,21 @@ class BacktestingSystem():
                     # Check positions at the start of the day
                     self.execution_handler.position_manager.check_positions(ticker_to_price_map) 
 
-                if backtest_data['end'].minute == 30:
+                # check positions every 30m
+                if backtest_data['end'].minute % 30 == 0:
                     ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
                     self.execution_handler.update_backtest_positions(backtest_data["end"], ticker_to_price_map=ticker_to_price_map)
                     positions_to_close = self.execution_handler.position_manager.check_positions(ticker_to_price_map)
                     if len(positions_to_close.keys()) > 0:
-                        self.process_signals_and_trades(backtest_data, positions_to_close)
+                        await self.process_signals_and_trades(backtest_data, positions_to_close)
                     
                 await asyncio.sleep(0)
+            except IndexError as e:
+                logger.debug('candle missing - test is probably over')
+                break
             except Exception as e:
                 logger.exception("Error running backtest", exc_info=e)
+                raise e
 
         logger.info("Position Manager stats: %r", self.execution_handler.position_manager.stats())
         logger.info("Backtest completed. Results: %r", self.trade_results)
