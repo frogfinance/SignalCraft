@@ -49,7 +49,8 @@ for timeframe in [TimeFrame.Minute, TimeFrame.Day]:
             conn.sql(f"CREATE TABLE IF NOT EXISTS ticker_data (timestamp TIMESTAMP, ticker TEXT, open FLOAT, high FLOAT, low FLOAT, close FLOAT, volume FLOAT, vwap FLOAT, PRIMARY KEY (timestamp, ticker))")
             conn.close()
             logging.info("Database created for %r", ticker)
-            get_data_for_tickers.append(f'{ticker};{timeframe}')
+
+        get_data_for_tickers.append(f'{ticker};{timeframe}')
 
 
 # create trades table
@@ -68,6 +69,8 @@ def save_to_db(ticker, data, timeframe):
     conn.close()
 
 
+logging.info("Starting data download for %r tickers", len(get_data_for_tickers))
+logging.info("For dates from %r to %r", start.isoformat(), end.isoformat())
 curr_date = end - timedelta(days=1)
 while curr_date > start:
     time_frames = [x.split(';')[-1] for x in get_data_for_tickers]

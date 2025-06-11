@@ -23,6 +23,7 @@ class StrategyHandler():
         self.market_profile_strategy = MarketProfileStrategy(timeframe=self.timeframe)
         self.support_resistance_strategy = SupportResistanceStrategy()
         self.trend_following_strategy = TrendFollowingStrategy()
+        self.supported_strategies = ['support_resistance', 'market_profile', 'trend_following']
         self.strategies = {
             'support_resistance': self.support_resistance_strategy,
             # 'markov': self.markov_prediction,
