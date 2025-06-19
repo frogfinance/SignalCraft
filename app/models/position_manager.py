@@ -2,8 +2,11 @@ from alpaca.trading import TradingClient
 from alpaca.trading.enums import OrderSide
 from datetime import datetime
 import logging
+from app.agents.portfolio_manager_agent import PortfolioManagerAgent
+from app.agents.base_agent import Message
 from app.models.position import Position
 from app.models.signal import Signal
+import uuid
 
 logger = logging.getLogger("app")
 
@@ -26,6 +29,8 @@ class PositionManager:
         self.cash_balance = self.starting_balance
         self.equity = self.starting_balance
         self.unrealized_pnl = 0
+
+        self.portfolio_agent = PortfolioManagerAgent()
 
         # Initialize current positions and pending orders
         self.update_positions()
@@ -116,21 +121,115 @@ class PositionManager:
             return False
     
     def check_positions(self, ticker_to_price_map):
+        """Check positions and determine if any should be closed based on rules or AI recommendations"""
         positions_to_close = {}
-        for ticker, position in self.positions.items():
-            if ticker in ticker_to_price_map:
-                signal = Signal(
-                    strategy="stop-loss", 
-                    ticker=ticker, 
-                    price=ticker_to_price_map[ticker],
-                    action=OrderSide.SELL, 
-                )
-                
-                if position is not None and self.should_close_position(ticker, signal=signal) is True:
-                    positions_to_close[ticker] = signal
-                    logger.info(f"Position {ticker} flagged for closing at price {signal.price}")
-        return positions_to_close
         
+        if self.is_backtest:
+            # Backtest logic uses simple rules
+            for ticker, position in self.positions.items():
+                if ticker in ticker_to_price_map:
+                    signal = Signal(
+                        strategy="stop-loss", 
+                        ticker=ticker, 
+                        price=ticker_to_price_map[ticker],
+                        side=OrderSide.SELL, 
+                    )
+                    
+                    if position is not None and self.should_close_position(ticker, signal=signal) is True:
+                        positions_to_close[ticker] = signal
+                        logger.info(f"Position {ticker} flagged for closing at price {signal.price}")
+        else:
+            # Live trading uses the portfolio manager agent
+            try:
+                # Get AI recommendations
+                import asyncio
+                result = asyncio.run(self.get_portfolio_actions_from_ai())
+                
+                if result and "actions" in result:
+                    actions = result["actions"]
+                    
+                    # Process exit recommendations from AI
+                    if "exit_positions" in actions and actions["exit_positions"]:
+                        for exit_action in actions["exit_positions"]:
+                            ticker = exit_action["ticker"]
+                            
+                            # Skip if we don't have this position
+                            if ticker not in self.positions or ticker not in ticker_to_price_map:
+                                continue
+                                
+                            # Create a signal for each recommended exit
+                            current_price = ticker_to_price_map[ticker]
+                            urgency = exit_action.get("urgency", "Medium")
+                            reason = exit_action.get("reason", "AI recommendation")
+                            
+                            signal = Signal(
+                                strategy="portfolio-manager", 
+                                ticker=ticker, 
+                                price=current_price,
+                                side=OrderSide.SELL,
+                                metadata={
+                                    "urgency": urgency,
+                                    "reason": reason,
+                                    "risk_level": actions.get("risk_level", "normal")
+                                }
+                            )
+                            
+                            # Add signal to our list of positions to close
+                            positions_to_close[ticker] = signal
+                            logger.info(f"AI recommends closing {ticker} at ${current_price} - {reason} (Urgency: {urgency})")
+                    
+                    # Handle portfolio-wide risk level
+                    if actions.get("risk_level") in ["high", "critical"]:
+                        logger.warning(f"Portfolio risk level is {actions['risk_level']} - consider reducing exposure")
+                        
+                        # If critical risk, consider closing additional positions
+                        if actions["risk_level"] == "critical" and actions.get("reduce_exposure", False):
+                            # Find largest positions that aren't already being closed
+                            account = self.get_account_info()
+                            equity = float(account['equity'])
+                            
+                            # Sort positions by size (largest first)
+                            sorted_positions = sorted(
+                                [(ticker, pos) for ticker, pos in self.positions.items() if ticker not in positions_to_close],
+                                key=lambda x: x[1].get_exposure(equity),
+                                reverse=True
+                            )
+                            
+                            # Close largest position if not already in the close list
+                            if sorted_positions and len(sorted_positions) > 0:
+                                ticker, position = sorted_positions[0]
+                                if ticker in ticker_to_price_map:
+                                    current_price = ticker_to_price_map[ticker]
+                                    signal = Signal(
+                                        strategy="risk-management", 
+                                        ticker=ticker, 
+                                        price=current_price,
+                                        side=OrderSide.SELL,
+                                        metadata={
+                                            "reason": f"Reducing exposure due to {actions['risk_level']} portfolio risk",
+                                            "urgency": "High"
+                                        }
+                                    )
+                                    positions_to_close[ticker] = signal
+                                    logger.info(f"Added {ticker} to close list due to critical portfolio risk")
+            
+            except Exception as e:
+                logger.error(f"Error processing AI recommendations: {str(e)}", exc_info=True)
+                # Fall back to rule-based decisions if AI fails
+                for ticker, position in self.positions.items():
+                    if ticker in ticker_to_price_map:
+                        signal = Signal(
+                            strategy="fallback-rule", 
+                            ticker=ticker, 
+                            price=ticker_to_price_map[ticker],
+                            side=OrderSide.SELL
+                        )
+                        
+                        if position is not None and self.should_close_position(ticker, signal=signal) is True:
+                            positions_to_close[ticker] = signal
+                            logger.info(f"Fallback: Position {ticker} flagged for closing at price {signal.price}")
+        
+        return positions_to_close
 
     def close_position(self, ticker, signal=None):
         """Close an existing position"""
@@ -202,6 +301,53 @@ class PositionManager:
             'margin_multiplier': 1,
             'daytrading_buying_power': float(self.cash_balance)
         }
+    
+    async def get_portfolio_actions_from_ai(self):
+        positions = self.get_open_positions()
+        account_info = self.get_account_info()
+
+        # Create message
+        analysis_request = Message(
+            id=str(uuid.uuid4()),
+            sender_id="trading_system",
+            content="analyze_portfolio",
+            metadata={
+                "positions": positions,
+                "account_info": account_info,
+                "request_type": "portfolio_analysis"
+            }
+        )
+        
+        self.portfolio_agent.receive_message(analysis_request)
+        message = self.portfolio_agent.get_next_message()
+        
+        if message:
+            response = await self.portfolio_agent.process_message(message)
+            
+            # Display human-readable output
+            logging.info(response["formatted_text"])
+            
+            # Process actionable items
+            actions = response["actions"]
+            
+            # Example: Automatically execute exit orders for high urgency positions
+            if actions and actions["exit_positions"]:
+                for position in actions["exit_positions"]:
+                    if position["urgency"] == "High":
+                        logging.info(f"Executing market sell order for {position['ticker']}")
+                        # trading_system.execution_handler.submit_order(position["ticker"], "SELL", ...)
+            
+            # Example: Adjust risk levels based on portfolio risk assessment
+            if actions and actions["risk_level"] in ["high", "critical"]:
+                logging.info(f"Adjusting position sizes due to {actions['risk_level']} risk level")
+                # Implement risk reduction logic
+        
+        return response
+
+    def get_open_positions(self):
+        """Get currently open positions"""
+        self.update_positions(show_status=False)
+        return list(self.positions.values())
 
     def should_close_position(self, ticker, signal):
         """Determine if a position should be closed based on technical analysis"""

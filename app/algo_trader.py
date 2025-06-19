@@ -48,7 +48,9 @@ class TradingSystem:
         self.backtest_system = None
 
     async def run(self):
+        logger.info("AlgoTrader loop is starting ->")
         if self.backtest_mode:
+            logger.info("Running loop in backtest mode...")
             backtest_system = BacktestingSystem(tickers, ALPACA_API_KEY, ALPACA_API_SECRET)
             self.data_handler = backtest_system.data_handler
             self.execution_handler = backtest_system.execution_handler
@@ -57,6 +59,14 @@ class TradingSystem:
             self.backtest_system = backtest_system
             # self.data_handler.fetch_data()
         else:
+            logger.info("Startup loop in live trading mode...")
+            self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', use_paper=USE_PAPER)    
+            logger.info("AlgoTrader ExecutionHandler started ->")
+            self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
+            logger.info("AlgoTrader DataHandler started ->")
+            self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
+            logger.info("AlgoTrader StrategyHandler started ->")
+            logger.info("AlgoTrader starting live trading mode ->")
             await self.run_algo_trader()
 
 
@@ -70,9 +80,6 @@ class TradingSystem:
         3. Execute trades based on the signals.
         """
         logger.info("Starting live trading mode...")
-        self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', use_paper=USE_PAPER)    
-        self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
-        self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
 
         while True:
             is_market_open = self.execution_handler.is_market_open()
@@ -87,25 +94,36 @@ class TradingSystem:
                 logger.info("Sleeping until market open...")
                 await asyncio.sleep(sleep_time)
             else:
-                # self.execution_handler.startup()
+                # sync with alpaca account
+                self.execution_handler.sync_alpaca_data()
                 logger.info("Alpaca Account connected successfully.")
 
             logger.info("Running trader & fetching market data...")
             if not self.data_handler.is_stream_subscribed:
                 await self.data_handler.subscribe_to_data_stream()
 
+            # get most recent price data for position checks
+            ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
+
             # generate signals from strategy
             signal_data = self.strategy_handler.generate_signals()  # Generate signals from strategy
 
             self.execution_handler.handle_execution(signal_data)  # Execute trades
 
-            # get most recent price data for position checks
-            ticker_to_price_map = self.data_handler.fetch_most_recent_prices()
-
             # check position at the 1hr interval of the market open using last candle from ticker_to_price_map
-            if ticker_to_price_map:
-                if ticker_to_price_map[tickers[0]]['timestamp'].minute == 30:
-                    self.execution_handler.position_manager.check_positions(ticker_to_price_map)  # Check positions
+            if ticker_to_price_map and tickers:  # Make sure both exist and are not empty
+                try:
+                    first_ticker = tickers[0]
+                    if (first_ticker in ticker_to_price_map and 
+                        isinstance(ticker_to_price_map[first_ticker], dict) and
+                        'timestamp' in ticker_to_price_map[first_ticker] and
+                        hasattr(ticker_to_price_map[first_ticker]['timestamp'], 'minute') and
+                        ticker_to_price_map[first_ticker]['timestamp'].minute == 30):
+                        
+                        logger.info(f"Running position check at 30-minute mark")
+                        self.execution_handler.position_manager.check_positions(ticker_to_price_map)
+                except Exception as e:
+                    logger.error(f"Error checking positions: {e}")
             
             logger.info("Sleeping for 60 seconds...")
             await asyncio.sleep(60)  # Sleep for 300 seconds before running again

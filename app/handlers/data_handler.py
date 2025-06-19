@@ -130,44 +130,59 @@ class DataHandler():
         return data
     
 
-    def generate_equity_curve_chart(self):
-        """Generates an equity curve from trade history stored in trades.db."""
+    def generate_equity_curve_chart(self, account_history=None):
+        """Generates an equity curve from account history or trade history."""
         
-        # Connect to DuckDB and fetch trade history
-        if self.is_backtest:
+        # If no account history is provided or in backtest mode, use trade data
+        if self.is_backtest or account_history is None:
+            # Existing backtest logic
             conn_str = f"{self.db_base_path}/backtest_trades.db"
+            query = """
+                SELECT timestamp, ticker, action as side, price, qty as quantity 
+                FROM trades 
+                ORDER BY timestamp ASC
+            """
+            df = self.query_duckdb_db(conn_str, query)
+            
+            # If no trade data exists, return an empty message
+            if df.empty:
+                return "<p class='text-gray-400'>No trade data available.</p>"
+
+            # Ensure timestamps are in datetime format
+            df["timestamp"] = pd.to_datetime(df["timestamp"])
+
+            # Calculate realized P&L
+            equity = INITIAL_BALANCE
+            equity_curve = []
+            
+            for index, row in df.iterrows():
+                trade_value = row["price"] * row["quantity"]
+                
+                if row["side"] is OrderSide.BUY:
+                    equity -= trade_value  # Deduct cost of purchase
+                elif row["side"] is OrderSide.SELL:
+                    equity += trade_value  # Add revenue from sale
+                
+                equity_curve.append((row["timestamp"], equity))
+
+            # Convert to DataFrame
+            equity_df = pd.DataFrame(equity_curve, columns=["timestamp", "equity"])
         else:
-            conn_str = f"{self.db_base_path}/trades.db"
-        query = """
-            SELECT timestamp, ticker, action as side, price, qty as quantity 
-            FROM trades 
-            ORDER BY timestamp ASC
-        """
-        df = self.query_duckdb_db(conn_str, query)
-
-        # If no trade data exists, return an empty message
-        if df.empty:
-            return "<p class='text-gray-400'>No trade data available.</p>"
-
-        # Ensure timestamps are in datetime format
-        df["timestamp"] = pd.to_datetime(df["timestamp"])
-
-        # Calculate realized P&L
-        equity = INITIAL_BALANCE
-        equity_curve = []
-        
-        for index, row in df.iterrows():
-            trade_value = row["price"] * row["quantity"]
+            # Convert Alpaca portfolio history to DataFrame
+            if not account_history.timestamp or not account_history.equity:
+                return "<p class='text-gray-400'>No portfolio history available.</p>"
+                
+            # Create DataFrame from portfolio history data
+            # Convert Unix timestamps to datetime objects
+            timestamps = [datetime.fromtimestamp(ts) for ts in account_history.timestamp]
             
-            if row["side"] is OrderSide.BUY:
-                equity -= trade_value  # Deduct cost of purchase
-            elif row["side"] is OrderSide.SELL:
-                equity += trade_value  # Add revenue from sale
+            equity_df = pd.DataFrame({
+                'timestamp': timestamps,
+                'equity': account_history.equity
+            })
             
-            equity_curve.append((row["timestamp"], equity))
-
-        # Convert to DataFrame
-        equity_df = pd.DataFrame(equity_curve, columns=["timestamp", "equity"])
+            # Sort by timestamp to ensure correct order
+            equity_df = equity_df.sort_values('timestamp')
 
         # Generate the Plotly chart
         fig = go.Figure()
@@ -182,16 +197,39 @@ class DataHandler():
         # Chart layout settings
         fig.update_layout(
             template="plotly_dark",
-            title="Account Equity Curve",
             xaxis_title="Time",
-            yaxis_title="Equity",
-            plot_bgcolor="black",
-            paper_bgcolor="black",
+            yaxis_title="Equity ($)",
+            plot_bgcolor="rgba(0,0,0,0.8)",
+            paper_bgcolor="rgba(0,0,0,0)",
             font=dict(color="white"),
-            margin=dict(l=40, r=20, t=40, b=40)
+            margin=dict(l=40, r=20, t=40, b=40),
+            yaxis=dict(
+                tickprefix="$",
+                gridcolor="rgba(255,255,255,0.1)"
+            ),
+            xaxis=dict(
+                gridcolor="rgba(255,255,255,0.1)"
+            ),
+            hovermode="x unified"
         )
 
-        return fig.to_html(full_html=False)
+        # Add range selector for time periods
+        fig.update_xaxes(
+            rangeslider_visible=False,
+            rangeselector=dict(
+                buttons=list([
+                    dict(count=1, label="1d", step="day", stepmode="backward"),
+                    dict(count=7, label="1w", step="day", stepmode="backward"),
+                    dict(count=1, label="1m", step="month", stepmode="backward"),
+                    dict(count=3, label="3m", step="month", stepmode="backward"),
+                    dict(step="all")
+                ]),
+                bgcolor="rgba(0,0,0,0.7)",
+                activecolor="rgba(0,120,200,0.7)"
+            )
+        )
+
+        return fig.to_html(full_html=False, include_plotlyjs='cdn')
 
 
     def get_historical_data(self, ticker, start, end):

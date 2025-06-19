@@ -6,39 +6,43 @@ def gen_logging_config():
         "disable_existing_loggers": False,
         "formatters": {
             "default": {
-                "()": "uvicorn.logging.DefaultFormatter",
-                "fmt": "%(levelprefix)s %(asctime)s - %(message)s",
-                "datefmt": "%Y-%m-%d %H:%M:%S",
-            },
-            "access": {
-                "()": "uvicorn.logging.AccessFormatter",
-                "fmt": "%(levelprefix)s %(asctime)s - %(client_addr)s - %(request_line)s - %(status_code)s",
-                "datefmt": "%Y-%m-%d %H:%M:%S",
-            },
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            }
         },
         "handlers": {
-            "default": {
-                "formatter": "default",
+            "console": {
                 "class": "logging.StreamHandler",
-                "stream": "ext://sys.stdout",
-            },
-            "access": {
-                "formatter": "access",
-                "class": "logging.StreamHandler",
-                "stream": "ext://sys.stdout",
-            },
-            "file": {
+                "level": "INFO",
                 "formatter": "default",
-                "class": "logging.FileHandler",
-                "filename": "app.log",
-                "mode": "a",
-            },
+                "stream": "ext://sys.stdout"
+            }
         },
         "loggers": {
-            "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
-            "uvicorn.error": {"handlers": ["default"], "level": "INFO", "propagate": False},
-            "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
-            "app": {"handlers": ["default", "file"], "level": "INFO", "propagate": False},
+            "app": {
+                "level": "INFO",
+                "handlers": ["console"],
+                "propagate": False
+            },
+            # Add specific configuration for Alpaca loggers
+            "alpaca": {
+                "level": "INFO",
+                "handlers": ["console"],
+                "propagate": False
+            },
+            "alpaca.trading": {
+                "level": "WARNING",
+                "handlers": ["console"],
+                "propagate": False
+            },
+            "alpaca.data": {
+                "level": "INFO",
+                "handlers": ["console"],
+                "propagate": False
+            }
         },
+        "root": {
+            "level": "INFO",
+            "handlers": ["console"]
+        }
     }
     return logging_config

@@ -13,7 +13,11 @@ from app.algo_trader import TradingSystem
 from app.utils import log_util
 from alpaca.trading import OrderSide
 
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s")
+logging_config = log_util.gen_logging_config()
+logging.config.dictConfig(logging_config)
+
+logger = logging.getLogger("app")
+
 
 trading_system = None
 
@@ -27,6 +31,7 @@ async def lifespan(app: FastAPI):
     # Start the algorithmic trading task
     loop = asyncio.get_event_loop()
     trader_task = loop.create_task(trading_system.run())
+    logging.info("Trading system initialized")
     
     try:
         # Application is running
@@ -47,11 +52,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-logging_config = log_util.gen_logging_config()
-logging.config.dictConfig(logging_config)
-
-logger = logging.getLogger("app")
-
 # Set up templates and static files for dashboard
 BASE_DIR = Path(__file__).resolve().parent
 logger.info("BASE_DIR: %r", BASE_DIR)
@@ -61,12 +61,28 @@ templates = Jinja2Templates(directory=BASE_DIR / "templates")
 # Set global variables available in all templates
 templates.env.globals["current_year"] = datetime.now().year
 
+def format_datetime(value):
+    """Format datetime objects or ISO strings for display."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            return value
+    if isinstance(value, datetime):
+        return value.strftime("%m/%d/%Y %H:%M:%S")
+    return value
+
+templates.env.filters["datetime"] = format_datetime
+
 @app.get("/", response_class=HTMLResponse)
 async def dashboard(request: Request):
     account_info = trading_system.execution_handler.position_manager.get_account_info()
-    open_positions = trading_system.execution_handler.position_manager.positions
+    open_positions = trading_system.execution_handler.position_manager.get_open_positions()
     trade_history = trading_system.execution_handler.get_trades()
-    equity_chart = trading_system.data_handler.generate_equity_curve_chart()
+    account_history = trading_system.execution_handler.archiver.account_history
+    equity_chart = trading_system.data_handler.generate_equity_curve_chart(account_history)
+    # Get recent signals from the strategy handler
+    recent_signals = trading_system.strategy_handler.get_recent_signals(limit=20) if hasattr(trading_system.strategy_handler, 'get_recent_signals') else []
 
     if trading_system.backtest_mode:
         strategies = [s for s in trading_system.strategy_handler.strategies.values()]
@@ -78,6 +94,7 @@ async def dashboard(request: Request):
             "positions": open_positions,
             "trades": trade_history,
             "backtest_price_data": dict(), # empty dict on page load
+            "recent_signals": recent_signals
         })
     else:
         return templates.TemplateResponse("dashboard.html", {
@@ -85,7 +102,9 @@ async def dashboard(request: Request):
             "account": account_info,
             "positions": open_positions,
             "trades": trade_history,
-            "equity_chart": equity_chart
+            "equity_chart": equity_chart,
+            "recent_signals": recent_signals,
+            "account_history": account_history
         })
 
 @app.get("/backtest", response_class=HTMLResponse)
@@ -178,3 +197,126 @@ async def websocket_backtest(websocket: WebSocket):
         logger.warning("WebSocket disconnected.")
         trading_system.backtest_system.stop_backtest()
         await trading_system.backtest_system.ws_manager.disconnect(websocket)
+
+@app.websocket("/ws/signals")
+async def websocket_signals(websocket: WebSocket):
+    await websocket.accept()
+    last_signal_id = 0
+    
+    try:
+        while True:
+            # Get new signals since last_signal_id
+            if hasattr(trading_system.strategy_handler, 'get_signals_since'):
+                new_signals = trading_system.strategy_handler.get_signals_since(last_signal_id)
+                
+                if new_signals:
+                    # Serialize signals to ensure datetime objects are properly converted
+                    serialized_signals = serialize_for_json(new_signals)
+                    await websocket.send_json({"signals": serialized_signals})
+                    
+                    # Update last_signal_id
+                    last_signal_id = max([s["id"] for s in new_signals])
+            
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        logger.warning("Signal WebSocket disconnected.")
+
+@app.websocket("/ws/dashboard")
+async def websocket_dashboard(websocket: WebSocket):
+    """
+    Generic WebSocket endpoint for real-time dashboard updates.
+    Sends different types of data as they change.
+    """
+    await websocket.accept()
+    
+    # Track last seen IDs/timestamps for each data type
+    last_data = {
+        "signals": {"id": 0, "timestamp": datetime.now()},
+        "positions": {"timestamp": datetime.now()},
+        "trades": {"timestamp": datetime.now()},
+        "account": {"timestamp": datetime.now()},
+        "check_positions": {"timestamp": datetime.now()}
+    }
+    
+    try:
+        # Initial data load
+        await send_dashboard_data(websocket, "initial", {
+            "signals": trading_system.strategy_handler.get_recent_signals(limit=20) 
+                      if hasattr(trading_system.strategy_handler, 'get_recent_signals') else [],
+            "positions": trading_system.execution_handler.position_manager.get_open_positions(),
+            "account": trading_system.execution_handler.position_manager.get_account_info(),
+            "trades": trading_system.execution_handler.archiver.get_trades()
+        })
+        
+        # Continuous updates
+        while True:
+            updates = {}
+            
+            # Check for new signals
+            if hasattr(trading_system.strategy_handler, 'get_signals_since'):
+                new_signals = trading_system.strategy_handler.get_signals_since(last_data["signals"]["id"])
+                if new_signals:
+                    updates["signals"] = new_signals
+                    last_data["signals"]["id"] = max([s["id"] for s in new_signals])
+            
+            # Check for position updates (every 45 seconds)
+            if (datetime.now() - last_data["check_positions"]["timestamp"]).total_seconds() > 45:
+                positions = trading_system.execution_handler.position_manager.get_open_positions()
+                updates["positions"] = positions
+            
+                # Check for account updates (every 45 seconds)
+                account = trading_system.execution_handler.position_manager.get_account_info()
+                updates["account"] = account
+            
+                # Check for new trades (every 45 seconds)
+                trades = trading_system.execution_handler.get_trades()
+                updates["trades"] = trades
+                last_data["check_positions"]["timestamp"] = datetime.now()
+            
+            # Send any updates
+            if updates:
+                await send_dashboard_data(websocket, "update", updates)
+            
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        logger.warning("Dashboard WebSocket disconnected.")
+
+async def send_dashboard_data(websocket, message_type, data):
+    """
+    Helper function to send properly serialized dashboard data through the WebSocket.
+    
+    Args:
+        websocket: The WebSocket connection
+        message_type: Type of message ("initial", "update", etc.)
+        data: Dictionary of data to send
+    """
+    message = {
+        "type": message_type,
+        "timestamp": datetime.now().isoformat(),
+        "data": data
+    }
+    
+    # Serialize to handle datetime objects
+    serialized_message = serialize_for_json(message)
+    await websocket.send_json(serialized_message)
+
+import json
+from datetime import datetime
+
+class DateTimeEncoder(json.JSONEncoder):
+    """Custom JSON encoder for datetime objects and custom classes."""
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        # Handle Position objects
+        if hasattr(obj, 'to_dict') and callable(obj.to_dict):
+            return obj.to_dict()
+        # Handle enum values
+        if hasattr(obj, 'name'):
+            return obj.name
+        return super().default(obj)
+
+# Add a helper function to serialize data with datetimes
+def serialize_for_json(data):
+    """Convert data to JSON-serializable format."""
+    return json.loads(json.dumps(data, cls=DateTimeEncoder))

@@ -32,16 +32,21 @@ class Position:
                 f"({self.pl_pct:.1%} P&L)")
 
     def __repr__(self):
-        return dict(
-            ticker=self.ticker,
-            qty=self.qty,
-            entry_price=self.entry_price,
-            side=self.side,
-            entry_time=self.entry_time.isoformat() if isinstance(self.entry_time, datetime) else self.entry_time,
-            target_qty=self.target_qty,
-            pl_pct=self.pl_pct,
-            pl=self.pl,
-            current_price=self.current_price,
-            is_open=self.is_open,
-            direction=self.direction
-        )
+        """Return string representation for debugging."""
+        return f"Position({self.ticker}, {self.qty}, {self.entry_price}, {self.side}, {self.entry_time})"
+
+    def to_dict(self):
+        """Return a JSON-serializable dictionary."""
+        return {
+            "ticker": self.ticker,
+            "qty": float(self.qty),
+            "entry_price": float(self.entry_price),
+            "side": self.side.name if hasattr(self.side, 'name') else str(self.side),
+            "entry_time": self.entry_time.isoformat() if isinstance(self.entry_time, datetime) else str(self.entry_time),
+            "target_qty": float(self.target_qty),
+            "pl_pct": float(self.pl_pct),
+            "pl": float(self.pl),
+            "current_price": float(self.current_price),
+            "is_open": self.is_open,
+            "direction": self.direction
+        }

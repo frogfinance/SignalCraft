@@ -5,6 +5,8 @@ from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 from alpaca.trading.enums import OrderSide, OrderType
 from alpaca.trading.models import Clock, Order, TimeInForce
 
+from app.agents.market_analyzer_agent import MarketAnalyzerAgent
+from app.models.archiver import Archiver
 from app.models.position_manager import PositionManager
 from app.models.signal import Signal
 
@@ -17,6 +19,13 @@ class ExecutionHandler():
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
         self.position_manager = PositionManager(self.trading_client, backtest=is_backtest)
+        self.archiver = Archiver(self.trading_client, backtest=is_backtest)
+        self.market_analyzer_agent = MarketAnalyzerAgent(
+            agent_id="market_analyzer_agent",
+            alpaca_api_key=api_key,
+            alpaca_secret_key=api_secret,
+            alpaca_paper=use_paper,
+        )
         self.is_backtest = is_backtest
         self.target_pct = 0.045
     
@@ -66,7 +75,36 @@ class ExecutionHandler():
                 should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
                 if should_close_position:
                     logger.info("Detected signal to close position for %r", signal.ticker)
-                    order_request = MarketOrderRequest(symbol=signal.ticker, qty=qty, side=OrderSide.SELL, type=OrderType.MARKET)
+                    
+                    # Get the actual position quantity instead of using the calculated qty
+                    position_qty = 0
+                    try:
+                        # First check if we have the position in our position manager
+                        if signal.ticker in self.position_manager.positions:
+                            position_qty = abs(self.position_manager.positions[signal.ticker].qty)
+                        else:
+                            # If not, try to get it from Alpaca directly
+                            positions = self.trading_client.get_all_positions()
+                            for position in positions:
+                                if position.symbol == signal.ticker:
+                                    position_qty = abs(float(position.qty))
+                                    break
+                    except Exception as e:
+                        logger.error(f"Error getting position quantity for {signal.ticker}: {e}")
+                        return None
+                        
+                    if position_qty <= 0:
+                        logger.warning(f"Cannot close position for {signal.ticker}: No shares held")
+                        return None
+                        
+                    # Create the order with the correct quantity
+                    order_request = MarketOrderRequest(
+                        symbol=signal.ticker, 
+                        qty=position_qty, 
+                        side=OrderSide.SELL, 
+                        type=OrderType.MARKET, 
+                        time_in_force=TimeInForce.DAY
+                    )
                     order = submit_and_handle_order(order_request)
                 else:
                     logger.info("Trade for %r not executed signal_data=%r", signal.ticker, signal)
@@ -91,18 +129,7 @@ class ExecutionHandler():
         return clock.next_open
     
     def get_trades(self):
-        db_table = "backtest_trades" if self.is_backtest else "trades"
-        trades = None
-        conn = None
-        try:
-            conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
-            trades = conn.sql("SELECT * FROM trades").df()
-        except Exception as e:
-            logger.exception("Error fetching trades", exc_info=e)
-        finally:
-            if conn is not None:
-                conn.close()
-        return trades
+        return self.archiver.get_trades()
     
     def get_trade_markers(self, ticker):
         db_table = "trades"
@@ -180,7 +207,12 @@ class ExecutionHandler():
         """this function exists to mock the order submission"""
         return self.trading_client.submit_order(order_request)
     
+    def sync_alpaca_data(self):
+        """Sync Alpaca account with the latest positions and pending orders."""
+        self.position_manager.update_positions()
+        self.position_manager.update_pending_orders()
+        self.archiver.get_trades()
+
     def update_backtest_positions(self, timestamp, ticker_to_price_map):
         """Update backtest positions."""
         self.position_manager.update_backtest_account_position_values(timestamp, ticker_to_price_map)
-        
