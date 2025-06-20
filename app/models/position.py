@@ -2,7 +2,7 @@ from datetime import datetime
 from alpaca.trading.enums import OrderSide
 
 class Position:
-    def __init__(self, ticker, qty, entry_price, side, entry_time, direction='LONG'):
+    def __init__(self, ticker, qty, entry_price, side, entry_time, direction='LONG', stop_loss=None, take_profit=None):
         self.ticker = ticker
         self.qty = float(qty)
         self.entry_price = float(entry_price)
@@ -14,6 +14,8 @@ class Position:
         self.current_price = entry_price
         self.direction = None
         self.is_open = True
+        self.stop_loss = stop_loss
+        self.take_profit = take_profit
 
     def update_pl(self, current_price):
         """Update position P&L"""
@@ -48,5 +50,7 @@ class Position:
             "pl": float(self.pl),
             "current_price": float(self.current_price),
             "is_open": self.is_open,
-            "direction": self.direction
+            "direction": self.direction,
+            "stop_loss": float(self.stop_loss) if self.stop_loss is not None else None,
+            "take_profit": float(self.take_profit) if self.take_profit is not None else None
         }

@@ -58,7 +58,7 @@ trades_db_paths = ["dbs/trades.db", "dbs/backtest_trades.db"]
 for trades_db_path in trades_db_paths:
     if not os.path.exists(trades_db_path):
         conn = duckdb.connect(trades_db_path)
-        conn.execute("CREATE TABLE trades (timestamp TIMESTAMP, ticker TEXT, action TEXT, qty INT, price FLOAT, order_id TEXT, strategy TEXT, reason TEXT)")
+        conn.execute("CREATE TABLE trades (timestamp TIMESTAMP, ticker TEXT, action TEXT, qty INT, price FLOAT, order_id TEXT, strategy TEXT, reason TEXT, stop_loss DECIMAL, take_profit DECIMAL)")
         conn.close()
 
 

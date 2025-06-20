@@ -37,7 +37,7 @@ class BaseAgent:
         agent_id: str = None,
         name: str = "BaseAgent",
         openai_api_key: str = None,
-        model: str = "gpt-4o",
+        model: str = "gpt-3.5-turbo-16k",
         temperature: float = 0.7,
         max_tokens: int = 1000
     ):
@@ -73,7 +73,7 @@ class BaseAgent:
     def setup_openai(self, api_key: str) -> None:
         """Set up OpenAI client with the provided API key."""
         self.openai_api_key = api_key
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(api_key=api_key, project="frogfinance")
         logger.info(f"OpenAI client configured for agent {self.name}")
     
     def send_message(self, recipient_agent: 'BaseAgent', content: str, metadata: Dict[str, Any] = None) -> Message:

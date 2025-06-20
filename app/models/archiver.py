@@ -79,24 +79,35 @@ class Archiver:
             return trades
     
         try:
-            # Get the last 1000 filled orders
+            # Get the last 1000 orders including take profit and stop loss orders
             get_orders_data = GetOrdersRequest(
                 status=QueryOrderStatus.CLOSED,
                 limit=1000,
-                nested=True  
+                nested=True  # This ensures child orders (stop loss/take profit) are included
             )
 
             orders = self.trading_client.get_orders(filter=get_orders_data)
+            logger.info(f"Retrieved {len(orders)} orders from Alpaca")
+            
+            # Log order details for debugging
+            for order in orders:
+                logger.debug(f"Order {order.id}: {order.symbol} {order.side} - Status: {order.status} - Type: {getattr(order, 'type', 'N/A')} - Filled: {order.filled_qty}")
+            
             # Only convert orders that have been filled (have execution data)
-            trades = [self._convert_trade(order) for order in orders if order.status == OrderStatus.FILLED and order.filled_qty]
+            trades = []
+            for order in orders:
+                if order.status == OrderStatus.FILLED and order.filled_qty:
+                    trade = self._convert_trade(order)
+                    if trade:
+                        trades.append(trade)
+            
+            logger.info(f"Converted {len(trades)} orders to trades")
             self.orders = trades  # Store the trades in the instance variable
+            return trades
         except Exception as e:
             logger.error(f"Failed to fetch trades: {e}")
-            orders = []
+            return []
 
-        return self.orders
-
-        
     def _convert_trade(self, order):
         """Convert Alpaca Order object to a trade dictionary.
         
@@ -112,6 +123,26 @@ class Archiver:
             return None
             
         try:
+            # Get order type (market, limit, stop, etc.)
+            order_type = getattr(order, 'type', 'unknown')
+            
+            # Determine if this was a stop loss or take profit
+            # These are typically child orders with a parent order ID
+            is_stop_loss = False
+            is_take_profit = False
+            
+            if hasattr(order, 'order_class') and order.order_class == 'bracket':
+                # For bracket orders
+                is_take_profit = getattr(order, 'take_profit_price', None) is not None
+                is_stop_loss = getattr(order, 'stop_loss_price', None) is not None
+            elif hasattr(order, 'type'):
+                # For stop/limit orders
+                is_stop_loss = order.type in ['stop', 'stop_limit']
+                is_take_profit = order.type in ['limit'] and order.side == 'sell'
+                
+            # Add parent order ID if available
+            parent_order_id = getattr(order, 'parent_order_id', None)
+                
             return {
                 'id': str(order.id),  # Order ID as trade ID
                 'ticker': order.symbol,
@@ -120,7 +151,11 @@ class Archiver:
                 'price': float(order.filled_avg_price),  # Use the filled average price
                 'timestamp': order.filled_at.isoformat() if order.filled_at else datetime.now().isoformat(),
                 'order_id': str(order.id),
-                'status': order.status.name if hasattr(order.status, 'name') else str(order.status)
+                'status': order.status.name if hasattr(order.status, 'name') else str(order.status),
+                'order_type': order_type,
+                'is_stop_loss': is_stop_loss,
+                'is_take_profit': is_take_profit,
+                'parent_order_id': str(parent_order_id) if parent_order_id else None
             }
         except Exception as e:
             logger.error(f"Error converting order to trade: {e}, order: {order}")

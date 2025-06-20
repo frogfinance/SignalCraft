@@ -29,7 +29,7 @@ class MarketAnalyzerAgent(BaseAgent):
         alpaca_api_key: str = None,
         alpaca_secret_key: str = None,
         alpaca_paper: bool = True,
-        model: str = "gpt-4o",
+        model: str = "gpt-3.5-turbo-16k",
         temperature: float = 0.2,
         max_tokens: int = 1000,
         lookback_days: int = 30,

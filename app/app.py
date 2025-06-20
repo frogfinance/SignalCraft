@@ -12,21 +12,44 @@ from fastapi.templating import Jinja2Templates
 from app.algo_trader import TradingSystem
 from app.utils import log_util
 from alpaca.trading import OrderSide
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+# Add these imports at the top of the file
+import uuid
+
+# Add DB manager
+from app.models.db_manager import DBManager
 
 logging_config = log_util.gen_logging_config()
 logging.config.dictConfig(logging_config)
 
 logger = logging.getLogger("app")
 
-
+# Initialize trading system and DB manager
 trading_system = None
+db_manager = DBManager()
+
+# Initialize scheduler
+scheduler = AsyncIOScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan function to manage startup and shutdown tasks."""
-    global trading_system
+    global trading_system, db_manager, scheduler
     logging.info("Starting the application and initializing resources...")
     trading_system = TradingSystem()
+    db_manager = DBManager()
+
+    # Start the market analyzer scheduler
+    scheduler.add_job(
+        analyze_market_and_store,
+        'interval',
+        minutes=15,
+        id='market_analysis_job',
+        replace_existing=True,
+        next_run_time=datetime.now() + timedelta(seconds=30)  # Run first time after 30 seconds
+    )
+    scheduler.start()
 
     # Start the algorithmic trading task
     loop = asyncio.get_event_loop()
@@ -39,6 +62,7 @@ async def lifespan(app: FastAPI):
     finally:
         # Perform cleanup
         logging.info("Shutting down background tasks...")
+        scheduler.shutdown()
         trader_task.cancel()  # Cancel the background trading task
         if trading_system.data_handler is not None:
             trading_system.data_handler.shutdown()
@@ -320,3 +344,103 @@ class DateTimeEncoder(json.JSONEncoder):
 def serialize_for_json(data):
     """Convert data to JSON-serializable format."""
     return json.loads(json.dumps(data, cls=DateTimeEncoder))
+
+# Add the agents route
+@app.get("/agents", response_class=HTMLResponse)
+async def agents_dashboard(request: Request):
+    """Render the agents dashboard view."""
+    account_info = trading_system.execution_handler.position_manager.get_account_info()
+    account_history = trading_system.execution_handler.archiver.account_history
+    
+    # Get latest market analysis and historical analyses
+    latest_analysis = db_manager.get_latest_market_analysis()
+    historical_analyses = db_manager.get_recent_market_analyses(limit=50)
+    
+    return templates.TemplateResponse("agents.html", {
+        "request": request,
+        "account": account_info,
+        "account_history": account_history,
+        "latest_analysis": latest_analysis,
+        "historical_analyses": historical_analyses
+    })
+
+# Add API routes for market analysis
+@app.post("/api/analyze-market")
+async def api_analyze_market():
+    """API endpoint to trigger a market analysis."""
+    try:
+        # Run analysis and store results
+        success = await analyze_market_and_store()
+        
+        if success:
+            return {"success": True}
+        else:
+            return {"success": False, "error": "Failed to generate market analysis"}
+    except Exception as e:
+        logger.error(f"Error analyzing market: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+@app.get("/api/market-analysis/{analysis_id}")
+async def api_get_market_analysis(analysis_id: int):
+    """API endpoint to get a specific market analysis by ID."""
+    try:
+        # Get specific analysis from DB
+        query = """
+            SELECT id, timestamp, overall_condition, volatility, trend, risk_level, 
+                   indices, vxx_data, correlations, raw_data
+            FROM market_analysis
+            WHERE id = ?
+        """
+        result = db_manager.conn.execute(query, [analysis_id]).fetchdf()
+        
+        if result.empty:
+            return {"success": False, "error": "Analysis not found"}
+        
+        # Convert JSON columns
+        analysis = result.iloc[0].to_dict()
+        for col in ['indices', 'vxx_data', 'correlations', 'raw_data']:
+            if isinstance(analysis[col], str):
+                analysis[col] = json.loads(analysis[col])
+        
+        return {"success": True, "analysis": analysis}
+    except Exception as e:
+        logger.error(f"Error retrieving market analysis: {str(e)}")
+        return {"success": False, "error": str(e)}
+
+# Market analysis function to be called by scheduler and API
+async def analyze_market_and_store():
+    """Run market analysis and store results in the database."""
+    try:
+        if not hasattr(trading_system, 'market_analyzer'):
+            logger.error("Market analyzer not initialized")
+            return False
+        
+        # Create a message to request market analysis
+        from app.agents.base_agent import Message
+        message = Message(
+            id=str(uuid.uuid4()),
+            sender_id="system",
+            content="analyze_market force_update",
+            metadata={"request_type": "market_analysis", "force_update": True}
+        )
+
+        logger.info("Requesting market analysis")
+        logger.info("trading system.market_analyzer: %r", trading_system.market_analyzer)
+        # Process the message with the market analyzer agent
+        response = await trading_system.market_analyzer.process_message(message)
+        
+        # Check if we got market conditions
+        if response and "market_conditions" in response:
+            market_conditions = response["market_conditions"]
+            
+            # Store in database
+            success = db_manager.save_market_analysis(market_conditions)
+            
+            logger.info(f"Market analysis completed and stored: {success}")
+            return success
+        else:
+            logger.warning("Market analyzer did not return market conditions")
+            return False
+    except Exception as e:
+        logger.error(f"Error in market analysis: {str(e)}")
+        return False

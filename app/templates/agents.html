@@ -1,0 +1,563 @@
+{% extends "base.html" %}
+
+{% block title %}Agents Dashboard{% endblock %}
+
+{% block content %}
+<div class="flex h-screen bg-gray-900 overflow-hidden">
+    <!-- Fixed Sidebar - Same as dashboard.html -->
+    <div class="w-64 bg-gray-800 text-white flex flex-col fixed top-0 left-0 h-full z-30">
+        <!-- Account Summary in Sidebar -->
+        <div class="p-4 border-b border-gray-700">
+            <h2 class="text-xl font-bold mb-4">Account</h2>
+            <div class="space-y-2">
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Equity:</span>
+                    <span class="font-semibold">${{ account.equity|default('0.00') }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">P/L:</span>
+                    {% with last_pl=account_history.profit_loss|last|default(0) %}
+                    <span class="font-semibold {% if last_pl > 0 %}text-green-400{% elif last_pl < 0 %}text-red-400{% else %}text-white{% endif %}">
+                        ${{ last_pl|round(2) }}
+                    </span>
+                    {% endwith %}
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-gray-400">Change:</span>
+                    {% with last_pl_pct=account_history.profit_loss_pct|last|default(0) %}
+                    <span class="font-semibold {% if last_pl_pct > 0 %}text-green-400{% elif last_pl_pct < 0 %}text-red-400{% else %}text-white{% endif %}">
+                        {{ last_pl_pct|round(2) }}%
+                    </span>
+                    {% endwith %}
+                </div>
+            </div>
+        </div>
+        
+        <!-- Navigation Menu -->
+        <nav class="flex-grow py-4 overflow-y-auto">
+            <ul class="space-y-2">
+                <li>
+                    <a href="/" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+                        </svg>
+                        Dashboard
+                    </a>
+                </li>
+                <li>
+                    <a href="/agents" class="flex items-center px-4 py-2 bg-gray-700 text-white">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+                        </svg>
+                        Agents
+                    </a>
+                </li>
+                <li>
+                    <a href="#" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"></path>
+                        </svg>
+                        News & Sentiment
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <!-- Account Details -->
+        <div class="p-4 border-t border-gray-700">
+            <div class="text-xs text-gray-400">
+                <div class="flex justify-between mb-1">
+                    <span>Buying Power:</span>
+                    <span>${{ account.buying_power|default('0.00') }}</span>
+                </div>
+                <div class="flex justify-between mb-1">
+                    <span>Margin Multiplier:</span>
+                    <span>{{ account.margin_multiplier|default('0') }}x</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Main Content - with left margin to account for fixed sidebar -->
+    <div class="ml-64 flex-1 overflow-y-auto">
+        <div class="container mx-auto px-6 py-4">
+            <h1 class="text-2xl font-bold text-white mb-6">AI Agents Dashboard</h1>
+            
+            <!-- Market Analyzer Agent Section -->
+            <section class="mb-8">
+                <div class="bg-gray-800 rounded-lg shadow-md overflow-hidden">
+                    <div class="p-4 bg-gray-700 border-b border-gray-600 flex justify-between items-center">
+                        <h2 class="text-xl font-bold text-white">Market Analyzer Agent</h2>
+                        <div class="flex items-center space-x-2">
+                            {% if latest_analysis %}
+                                <span class="text-xs text-gray-400">Last updated: {{ latest_analysis.timestamp|datetime }}</span>
+                            {% endif %}
+                            <button id="refresh-analysis" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm flex items-center">
+                                <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                </svg>
+                                Refresh Analysis
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Latest Analysis Display -->
+                    <div id="latest-analysis" class="p-6">
+                        {% if latest_analysis %}
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <!-- Market Summary Card -->
+                                <div class="bg-gray-700 rounded-lg p-4">
+                                    <h3 class="text-lg font-bold text-white mb-3">Market Summary</h3>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Overall Condition:</span>
+                                            <span class="font-semibold">{{ latest_analysis.overall_condition|replace('_', ' ')|title }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Risk Level:</span>
+                                            <span class="font-semibold 
+                                                {% if latest_analysis.risk_level == 'low' %}text-green-400
+                                                {% elif latest_analysis.risk_level == 'moderate' %}text-yellow-400
+                                                {% elif latest_analysis.risk_level == 'high' %}text-orange-400
+                                                {% elif latest_analysis.risk_level == 'very_high' %}text-red-400
+                                                {% endif %}">
+                                                {{ latest_analysis.risk_level|replace('_', ' ')|title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Trend:</span>
+                                            <span class="font-semibold 
+                                                {% if 'bullish' in latest_analysis.trend %}text-green-400
+                                                {% elif 'bearish' in latest_analysis.trend %}text-red-400
+                                                {% else %}text-white{% endif %}">
+                                                {{ latest_analysis.trend|replace('_', ' ')|title }}
+                                            </span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Volatility:</span>
+                                            <span class="font-semibold 
+                                                {% if latest_analysis.volatility == 'low' %}text-green-400
+                                                {% elif latest_analysis.volatility == 'normal' %}text-blue-400
+                                                {% elif latest_analysis.volatility == 'elevated' %}text-yellow-400
+                                                {% elif latest_analysis.volatility == 'high' %}text-red-400
+                                                {% endif %}">
+                                                {{ latest_analysis.volatility|replace('_', ' ')|title }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- VXX Data Card -->
+                                <div class="bg-gray-700 rounded-lg p-4">
+                                    <h3 class="text-lg font-bold text-white mb-3">Volatility (VXX)</h3>
+                                    <div class="space-y-2">
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Current Level:</span>
+                                            <span class="font-semibold">${{ latest_analysis.vxx_data.level|round(2) }}</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">5-Day Change:</span>
+                                            <span class="font-semibold {% if latest_analysis.vxx_data.change > 0 %}text-red-400{% else %}text-green-400{% endif %}">
+                                                {{ latest_analysis.vxx_data.change|round(2) }}%
+                                            </span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">Percentile:</span>
+                                            <span class="font-semibold">{{ latest_analysis.vxx_data.percentile|round(1) }}th</span>
+                                        </div>
+                                        <div class="flex justify-between">
+                                            <span class="text-gray-400">VXX Correlation:</span>
+                                            <span class="font-semibold">{{ latest_analysis.correlations.vxx_correlation|replace('_', ' ')|title }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Indices Table -->
+                            <div class="mt-6">
+                                <h3 class="text-lg font-bold text-white mb-3">Index Performance</h3>
+                                <div class="overflow-x-auto">
+                                    <table class="min-w-full bg-gray-700 text-white rounded-lg">
+                                        <thead>
+                                            <tr class="bg-gray-600 text-gray-300">
+                                                <th class="py-2 px-4 text-left">Index</th>
+                                                <th class="py-2 px-4 text-left">Price</th>
+                                                <th class="py-2 px-4 text-left">Daily Change</th>
+                                                <th class="py-2 px-4 text-left">Trend</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for ticker, data in latest_analysis.indices.items() %}
+                                            <tr class="border-b border-gray-600">
+                                                <td class="py-2 px-4">{{ ticker }}</td>
+                                                <td class="py-2 px-4">${{ data.price|round(2) }}</td>
+                                                <td class="py-2 px-4 {% if data.daily_change_pct > 0 %}text-green-400{% elif data.daily_change_pct < 0 %}text-red-400{% endif %}">
+                                                    {{ data.daily_change_pct|round(2) }}%
+                                                </td>
+                                                <td class="py-2 px-4">{{ data.trend|replace('_', ' ')|title }}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="text-center py-8">
+                                <p class="text-gray-400">No market analysis available. Click "Refresh Analysis" to generate one.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Loading Indicator (hidden by default) -->
+                    <div id="analysis-loading" class="p-6 hidden">
+                        <div class="flex justify-center items-center py-8">
+                            <svg class="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <span class="text-gray-300">Analyzing market data...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Historical Analyses Section -->
+            <section>
+                <div class="bg-gray-800 rounded-lg shadow-md overflow-hidden">
+                    <div class="p-4 bg-gray-700 border-b border-gray-600">
+                        <h2 class="text-xl font-bold text-white">Historical Market Analyses</h2>
+                    </div>
+                    
+                    <!-- Historical Analyses Table -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full bg-gray-800 text-white">
+                            <thead>
+                                <tr class="bg-gray-700 text-gray-300">
+                                    <th class="py-3 px-4 text-left">Date & Time</th>
+                                    <th class="py-3 px-4 text-left">Market Condition</th>
+                                    <th class="py-3 px-4 text-left">Risk Level</th>
+                                    <th class="py-3 px-4 text-left">Trend</th>
+                                    <th class="py-3 px-4 text-left">Volatility</th>
+                                    <th class="py-3 px-4 text-left">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historical-analyses">
+                                {% for analysis in historical_analyses.itertuples() %}
+                                <tr class="border-b border-gray-600">
+                                    <td class="py-3 px-4">{{ analysis.timestamp|datetime }}</td>
+                                    <td class="py-3 px-4">{{ analysis.overall_condition|replace('_', ' ')|title }}</td>
+                                    <td class="py-3 px-4 
+                                        {% if analysis.risk_level == 'low' %}text-green-400
+                                        {% elif analysis.risk_level == 'moderate' %}text-yellow-400
+                                        {% elif analysis.risk_level == 'high' %}text-orange-400
+                                        {% elif analysis.risk_level == 'very_high' %}text-red-400
+                                        {% endif %}">
+                                        {{ analysis.risk_level|replace('_', ' ')|title }}
+                                    </td>
+                                    <td class="py-3 px-4 
+                                        {% if 'bullish' in analysis.trend %}text-green-400
+                                        {% elif 'bearish' in analysis.trend %}text-red-400
+                                        {% else %}text-white{% endif %}">
+                                        {{ analysis.trend|replace('_', ' ')|title }}
+                                    </td>
+                                    <td class="py-3 px-4 
+                                        {% if analysis.volatility == 'low' %}text-green-400
+                                        {% elif analysis.volatility == 'normal' %}text-blue-400
+                                        {% elif analysis.volatility == 'elevated' %}text-yellow-400
+                                        {% elif analysis.volatility == 'high' %}text-red-400
+                                        {% endif %}">
+                                        {{ analysis.volatility|replace('_', ' ')|title }}
+                                    </td>
+                                    <td class="py-3 px-4">
+                                        <button class="view-details bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs" 
+                                                data-id="{{ analysis.id }}">
+                                            View Details
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Analysis Detail Modal (hidden by default) -->
+            <div id="analysis-modal" class="fixed inset-0 flex items-center justify-center z-50 hidden">
+                <div class="absolute inset-0 bg-black opacity-75" id="modal-overlay"></div>
+                <div class="bg-gray-800 rounded-lg shadow-xl w-11/12 max-w-4xl z-10 max-h-[90vh] overflow-y-auto">
+                    <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+                        <h3 class="text-xl font-bold text-white">Market Analysis Details</h3>
+                        <button id="close-modal" class="text-gray-400 hover:text-white">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div id="modal-content" class="p-6">
+                        <!-- Content will be loaded dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Refresh analysis button
+        const refreshButton = document.getElementById('refresh-analysis');
+        const latestAnalysisDiv = document.getElementById('latest-analysis');
+        const analysisLoadingDiv = document.getElementById('analysis-loading');
+        
+        refreshButton.addEventListener('click', function() {
+            // Show loading state
+            latestAnalysisDiv.classList.add('hidden');
+            analysisLoadingDiv.classList.remove('hidden');
+            
+            // Call API to trigger new analysis
+            fetch('/api/analyze-market', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Reload the page to show new analysis
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                    // Hide loading state
+                    latestAnalysisDiv.classList.remove('hidden');
+                    analysisLoadingDiv.classList.add('hidden');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while refreshing the analysis.');
+                // Hide loading state
+                latestAnalysisDiv.classList.remove('hidden');
+                analysisLoadingDiv.classList.add('hidden');
+            });
+        });
+        
+        // View details buttons
+        const viewDetailsButtons = document.querySelectorAll('.view-details');
+        const analysisModal = document.getElementById('analysis-modal');
+        const modalOverlay = document.getElementById('modal-overlay');
+        const closeModalButton = document.getElementById('close-modal');
+        const modalContent = document.getElementById('modal-content');
+        
+        viewDetailsButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const analysisId = this.getAttribute('data-id');
+                
+                // Fetch analysis details
+                fetch(`/api/market-analysis/${analysisId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Format and display the analysis
+                            const analysis = data.analysis;
+                            
+                            // Create content HTML
+                            let html = `
+                                <div class="space-y-6">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <!-- Market Summary -->
+                                        <div class="bg-gray-700 rounded-lg p-4">
+                                            <h4 class="text-lg font-bold text-white mb-3">Market Summary</h4>
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Date & Time:</span>
+                                                    <span class="font-semibold">${formatDateTime(analysis.timestamp)}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Overall Condition:</span>
+                                                    <span class="font-semibold">${analysis.overall_condition.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Risk Level:</span>
+                                                    <span class="font-semibold ${getRiskLevelClass(analysis.risk_level)}">
+                                                        ${analysis.risk_level.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                    </span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Trend:</span>
+                                                    <span class="font-semibold ${getTrendClass(analysis.trend)}">
+                                                        ${analysis.trend.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                    </span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Volatility:</span>
+                                                    <span class="font-semibold ${getVolatilityClass(analysis.volatility)}">
+                                                        ${analysis.volatility.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- VXX Data -->
+                                        <div class="bg-gray-700 rounded-lg p-4">
+                                            <h4 class="text-lg font-bold text-white mb-3">Volatility (VXX)</h4>
+                                            <div class="space-y-2">
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Current Level:</span>
+                                                    <span class="font-semibold">$${analysis.vxx_data.level.toFixed(2)}</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">5-Day Change:</span>
+                                                    <span class="font-semibold ${analysis.vxx_data.change > 0 ? 'text-red-400' : 'text-green-400'}">
+                                                        ${analysis.vxx_data.change.toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">Percentile:</span>
+                                                    <span class="font-semibold">${analysis.vxx_data.percentile.toFixed(1)}th</span>
+                                                </div>
+                                                <div class="flex justify-between">
+                                                    <span class="text-gray-400">VXX Correlation:</span>
+                                                    <span class="font-semibold">
+                                                        ${analysis.correlations.vxx_correlation.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Indices Table -->
+                                    <div>
+                                        <h4 class="text-lg font-bold text-white mb-3">Index Performance</h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full bg-gray-700 text-white rounded-lg">
+                                                <thead>
+                                                    <tr class="bg-gray-600 text-gray-300">
+                                                        <th class="py-2 px-4 text-left">Index</th>
+                                                        <th class="py-2 px-4 text-left">Price</th>
+                                                        <th class="py-2 px-4 text-left">Daily Change</th>
+                                                        <th class="py-2 px-4 text-left">Trend</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                            `;
+                            
+                            // Add each index
+                            for (const [ticker, data] of Object.entries(analysis.indices)) {
+                                html += `
+                                    <tr class="border-b border-gray-600">
+                                        <td class="py-2 px-4">${ticker}</td>
+                                        <td class="py-2 px-4">$${data.price.toFixed(2)}</td>
+                                        <td class="py-2 px-4 ${data.daily_change_pct > 0 ? 'text-green-400' : 'text-red-400'}">
+                                            ${data.daily_change_pct.toFixed(2)}%
+                                        </td>
+                                        <td class="py-2 px-4">${data.trend.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
+                                    </tr>
+                                `;
+                            }
+                            
+                            // Close the table
+                            html += `
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Correlations -->
+                                    <div>
+                                        <h4 class="text-lg font-bold text-white mb-3">Correlations with VXX</h4>
+                                        <div class="overflow-x-auto">
+                                            <table class="min-w-full bg-gray-700 text-white rounded-lg">
+                                                <thead>
+                                                    <tr class="bg-gray-600 text-gray-300">
+                                                        <th class="py-2 px-4 text-left">Index</th>
+                                                        <th class="py-2 px-4 text-left">Correlation</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                            `;
+                            
+                            // Add correlations
+                            for (const [ticker, correlation] of Object.entries(analysis.correlations.details)) {
+                                const corrClass = correlation < -0.3 ? 'text-green-400' : 
+                                                 correlation > 0.3 ? 'text-red-400' : 'text-white';
+                                html += `
+                                    <tr class="border-b border-gray-600">
+                                        <td class="py-2 px-4">${ticker}</td>
+                                        <td class="py-2 px-4 ${corrClass}">${correlation.toFixed(2)}</td>
+                                    </tr>
+                                `;
+                            }
+                            
+                            // Close the table and content
+                            html += `
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            
+                            // Set the content and show the modal
+                            modalContent.innerHTML = html;
+                            analysisModal.classList.remove('hidden');
+                        } else {
+                            alert('Error: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('An error occurred while fetching analysis details.');
+                    });
+            });
+        });
+        
+        // Close modal when clicking close button or overlay
+        closeModalButton.addEventListener('click', function() {
+            analysisModal.classList.add('hidden');
+        });
+        
+        modalOverlay.addEventListener('click', function() {
+            analysisModal.classList.add('hidden');
+        });
+        
+        // Helper functions for formatting
+        function formatDateTime(timestamp) {
+            if (typeof timestamp === 'string') {
+                timestamp = new Date(timestamp);
+            }
+            return timestamp.toLocaleString();
+        }
+        
+        function getRiskLevelClass(riskLevel) {
+            switch(riskLevel) {
+                case 'low': return 'text-green-400';
+                case 'moderate': return 'text-yellow-400';
+                case 'high': return 'text-orange-400';
+                case 'very_high': return 'text-red-400';
+                default: return 'text-white';
+            }
+        }
+        
+        function getTrendClass(trend) {
+            if (trend.includes('bullish')) return 'text-green-400';
+            if (trend.includes('bearish')) return 'text-red-400';
+            return 'text-white';
+        }
+        
+        function getVolatilityClass(volatility) {
+            switch(volatility) {
+                case 'low': return 'text-green-400';
+                case 'normal': return 'text-blue-400';
+                case 'elevated': return 'text-yellow-400';
+                case 'high': return 'text-red-400';
+                default: return 'text-white';
+            }
+        }
+    });
+</script>
+{% endblock %}

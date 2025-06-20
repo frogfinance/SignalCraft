@@ -1,8 +1,8 @@
 import duckdb
 import logging
 from alpaca.trading.client import TradingClient
-from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
-from alpaca.trading.enums import OrderSide, OrderType
+from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest, TakeProfitRequest, StopLossRequest
+from alpaca.trading.enums import OrderSide, OrderType, OrderClass
 from alpaca.trading.models import Clock, Order, TimeInForce
 
 from app.agents.market_analyzer_agent import MarketAnalyzerAgent
@@ -14,18 +14,13 @@ logger = logging.getLogger("app")
 
 
 class ExecutionHandler():
-    def __init__(self, api_key, api_secret, db_base_path="dbs", use_paper=True, is_backtest=False):
+    def __init__(self, api_key, api_secret, db_base_path="dbs", use_paper=True, is_backtest=False, market_analyzer=None):
         super().__init__()
         self.db_base_path = db_base_path
         self.trading_client = TradingClient(api_key, api_secret, paper=use_paper)
         self.position_manager = PositionManager(self.trading_client, backtest=is_backtest)
         self.archiver = Archiver(self.trading_client, backtest=is_backtest)
-        self.market_analyzer_agent = MarketAnalyzerAgent(
-            agent_id="market_analyzer_agent",
-            alpaca_api_key=api_key,
-            alpaca_secret_key=api_secret,
-            alpaca_paper=use_paper,
-        )
+        self.market_analyzer_agent = market_analyzer
         self.is_backtest = is_backtest
         self.target_pct = 0.045
     
@@ -50,40 +45,73 @@ class ExecutionHandler():
             return order
 
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
-        # if sell, check if we have shares to sell
-        try:
-            if is_good_trade and signal.side in OrderSide.SELL and qty > 0:
-                order_request = LimitOrderRequest(symbol=signal.ticker, 
-                                        qty=qty, 
-                                        side=OrderSide.SELL, 
-                                        type=OrderType.LIMIT,
-                                        limit_price=signal.price,
-                                        time_in_force = TimeInForce.DAY,
-                        )
-                order = submit_and_handle_order(order_request)
         
-            elif is_good_trade and signal.side in OrderSide.BUY and qty > 0:   
-                order_request = LimitOrderRequest(symbol=signal.ticker,
-                                        qty=qty,
-                                        side=OrderSide.BUY,
-                                        type=OrderType.LIMIT,
-                                        limit_price=signal.price,
-                                        time_in_force = TimeInForce.DAY,
-                                        )
+        # Create take_profit and stop_loss requests if provided in the signal
+        take_profit = None
+        stop_loss = None
+        order_class = None
+        
+        # Only set up bracket orders for entries, not exits
+        if signal.take_profit is not None or signal.stop_loss is not None:
+            # If both stop loss and take profit are present, use bracket order
+            if signal.take_profit is not None and signal.stop_loss is not None:
+                order_class = OrderClass.BRACKET
+                take_profit = TakeProfitRequest(limit_price=float(signal.take_profit))
+                stop_loss = StopLossRequest(stop_price=float(signal.stop_loss))
+                logger.info(f"Using bracket order with TP: {signal.take_profit} and SL: {signal.stop_loss}")
+            # If only take profit, use one-cancels-other order
+            elif signal.take_profit is not None:
+                order_class = OrderClass.OCO
+                take_profit = TakeProfitRequest(limit_price=float(signal.take_profit))
+                logger.info(f"Using OCO order with TP: {signal.take_profit}")
+            # If only stop loss, use one-cancels-other order
+            elif signal.stop_loss is not None:
+                order_class = OrderClass.OCO
+                stop_loss = StopLossRequest(stop_price=float(signal.stop_loss))
+                logger.info(f"Using OCO order with SL: {signal.stop_loss}")
+        
+        try:
+            # If selling shares we already own
+            if is_good_trade and signal.action == 'sell' and qty > 0:
+                order_request = LimitOrderRequest(
+                    symbol=signal.ticker, 
+                    qty=qty, 
+                    side=OrderSide.SELL, 
+                    type=OrderType.LIMIT,
+                    limit_price=float(signal.price),
+                    time_in_force=TimeInForce.DAY,
+                    order_class=order_class,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss
+                )
+                order = submit_and_handle_order(order_request)
+            
+            # If buying shares
+            elif is_good_trade and signal.action == 'buy' and qty > 0:   
+                order_request = LimitOrderRequest(
+                    symbol=signal.ticker,
+                    qty=qty,
+                    side=OrderSide.BUY,
+                    type=OrderType.LIMIT,
+                    limit_price=float(signal.price),
+                    time_in_force=TimeInForce.DAY,
+                    order_class=order_class,
+                    take_profit=take_profit,
+                    stop_loss=stop_loss
+                )
                 order = submit_and_handle_order(order_request)
             else:
+                # Handle position closing logic
                 should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
                 if should_close_position:
                     logger.info("Detected signal to close position for %r", signal.ticker)
                     
-                    # Get the actual position quantity instead of using the calculated qty
+                    # Get the actual position quantity
                     position_qty = 0
                     try:
-                        # First check if we have the position in our position manager
                         if signal.ticker in self.position_manager.positions:
                             position_qty = abs(self.position_manager.positions[signal.ticker].qty)
                         else:
-                            # If not, try to get it from Alpaca directly
                             positions = self.trading_client.get_all_positions()
                             for position in positions:
                                 if position.symbol == signal.ticker:
@@ -97,7 +125,7 @@ class ExecutionHandler():
                         logger.warning(f"Cannot close position for {signal.ticker}: No shares held")
                         return None
                         
-                    # Create the order with the correct quantity
+                    # For position closings, we don't use bracket orders (we're already exiting)
                     order_request = MarketOrderRequest(
                         symbol=signal.ticker, 
                         qty=position_qty, 
@@ -110,7 +138,7 @@ class ExecutionHandler():
                     logger.info("Trade for %r not executed signal_data=%r", signal.ticker, signal)
         except Exception as e:
             logger.error(f"Error executing trade for %r", signal.ticker, exc_info=e)
-            logger.info("Signal from: symbol=%r qty=%r side=%r price=%r", signal.ticker, qty, signal.side, signal.price)
+            logger.info("Signal from: symbol=%r qty=%r action=%r price=%r", signal.ticker, qty, signal.action, signal.price)
             return None
         return order
     
@@ -165,6 +193,13 @@ class ExecutionHandler():
         order_generated = False 
         qty, is_good_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
         should_close_position = self.position_manager.should_close_position(signal.ticker, signal)
+        
+        # Include stop loss and take profit in the backtest order
+        if signal.stop_loss is not None:
+            order['stop_loss'] = signal.stop_loss
+        if signal.take_profit is not None:
+            order['take_profit'] = signal.take_profit
+            
         if should_close_position is True:
             logger.info("Detected signal to close position for %r", signal.ticker)
             order['qty'] = self.position_manager.positions[signal.ticker].qty
@@ -199,10 +234,31 @@ class ExecutionHandler():
         if self.is_backtest:
             db_table = "backtest_trades"
         conn = duckdb.connect(f"{self.db_base_path}/{db_table}.db")
-        conn.execute(f"INSERT INTO trades VALUES ('{trade_timestamp}', '{order.symbol}', '{signal.action}', {order.filled_qty}, {order.filled_avg_price if order.filled_avg_price is not None else 0}, '{order.client_order_id}', '{signal.strategy}', '{signal.reason}')")
+        
+        # Include stop loss and take profit in the saved trade data
+        stop_loss = signal.stop_loss if hasattr(signal, 'stop_loss') and signal.stop_loss is not None else 'NULL'
+        take_profit = signal.take_profit if hasattr(signal, 'take_profit') and signal.take_profit is not None else 'NULL'
+        
+        # Update SQL to include stop_loss and take_profit columns
+        conn.execute(f"""
+            INSERT INTO trades 
+            VALUES (
+                '{trade_timestamp}', 
+                '{order.symbol}', 
+                '{signal.action}', 
+                {order.filled_qty}, 
+                {order.filled_avg_price if order.filled_avg_price is not None else 0}, 
+                '{order.client_order_id}', 
+                '{signal.strategy}', 
+                '{signal.reason}',
+                {stop_loss if stop_loss != 'NULL' else 'NULL'},
+                {take_profit if take_profit != 'NULL' else 'NULL'}
+            )
+        """)
+        
         conn.close()
         logger.debug('Trade saved for ticker: %r', order.symbol)
-
+    
     def submit_order(self, order_request):
         """this function exists to mock the order submission"""
         return self.trading_client.submit_order(order_request)
@@ -216,3 +272,60 @@ class ExecutionHandler():
     def update_backtest_positions(self, timestamp, ticker_to_price_map):
         """Update backtest positions."""
         self.position_manager.update_backtest_account_position_values(timestamp, ticker_to_price_map)
+
+    def process_signal(self, signal):
+        """Process and execute a trading signal."""
+        logger.info("Processing signal: %s", signal)
+        
+        # Calculate the number of shares to trade
+        shares, is_valid_trade = self.position_manager.calculate_target_position(signal.ticker, signal.price, signal.side, target_pct=self.target_pct)
+        
+        if not is_valid_trade:
+            logger.warning("Invalid trade signal for %s: qty=%s", signal.ticker, shares)
+            return None
+        
+        # Create the order
+        order = {
+            'ticker': signal.ticker,
+            'side': signal.side,
+            'qty': shares,
+            'price': signal.price,
+            'direction': signal.direction
+        }
+        
+        # Add stop loss and take profit if present in the signal
+        if hasattr(signal, 'stop_loss') and signal.stop_loss:
+            order['stop_loss'] = signal.stop_loss
+        
+        if hasattr(signal, 'take_profit') and signal.take_profit:
+            order['take_profit'] = signal.take_profit
+        
+        # Submit the order
+        try:
+            if signal.action == 'buy':
+                order_request = LimitOrderRequest(
+                    symbol=signal.ticker,
+                    qty=shares,
+                    side=OrderSide.BUY,
+                    type=OrderType.LIMIT,
+                    limit_price=float(signal.price),
+                    time_in_force=TimeInForce.DAY
+                )
+                self.submit_order(order_request)
+                logger.info("Buy order submitted: %s", order)
+            elif signal.action == 'sell':
+                order_request = LimitOrderRequest(
+                    symbol=signal.ticker,
+                    qty=shares,
+                    side=OrderSide.SELL,
+                    type=OrderType.LIMIT,
+                    limit_price=float(signal.price),
+                    time_in_force=TimeInForce.DAY
+                )
+                self.submit_order(order_request)
+                logger.info("Sell order submitted: %s", order)
+        except Exception as e:
+            logger.error("Error submitting order for %s: %s", signal.ticker, e)
+            return None
+        
+        return order

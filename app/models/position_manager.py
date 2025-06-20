@@ -526,11 +526,19 @@ class PositionManager:
                 
                 position.qty = total_shares
                 position.entry_price = new_avg_price
+                
+                # Update stop loss and take profit if provided in the order
+                if 'stop_loss' in order:
+                    position.stop_loss = float(order['stop_loss'])
+                if 'take_profit' in order:
+                    position.take_profit = float(order['take_profit'])
             else:
-                # Create new position
+                # Create new position with stop loss and take profit if available
                 position = Position(
                     ticker, float(order['qty']), float(order['price']), 
-                    order['side'], datetime.now(), order.get('direction', None)
+                    order['side'], datetime.now(), order.get('direction', None),
+                    stop_loss=order.get('stop_loss'),
+                    take_profit=order.get('take_profit')
                 )
                 
             position.is_open = True

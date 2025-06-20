@@ -259,10 +259,10 @@ class DataHandler():
         if symbol not in self.tickers:
             return
         else:
-            logger.info('received bar for {}: {}'.format(symbol, timestamp))
+            logger.debug('received bar for {}: {}'.format(symbol, timestamp))
 
         value_str = f"('{timestamp}', '{symbol}', {bar.open}, {bar.high}, {bar.low}, {bar.close}, {bar.volume}, {bar.vwap})"
-        logger.info('saving values for %r @ %r', symbol, timestamp)
+        logger.debug('saving values for %r @ %r', symbol, timestamp)
         self.save_to_db(symbol, [value_str])
 
 

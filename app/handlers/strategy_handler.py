@@ -11,12 +11,13 @@ from app.strategies.support_resistance_strategy import SupportResistanceStrategy
 from alpaca.data import TimeFrame
 
 from app.strategies.trend_following_strategy import TrendFollowingStrategy
+from app.strategies.dual_time_frame_strategy import DualTimeFrameStrategy
 
 logger = logging.getLogger("app")
 
 
 class StrategyHandler():
-    def __init__(self, tickers, db_base_path="dbs", timeframe=TimeFrame.Minute):
+    def __init__(self, tickers, db_base_path="dbs", timeframe=TimeFrame.Minute, market_analyzer=None):
         super().__init__()
         self.db_base_path = db_base_path
         self.tickers = tickers
@@ -25,11 +26,25 @@ class StrategyHandler():
         self.market_profile_strategy = MarketProfileStrategy(timeframe=self.timeframe)
         self.support_resistance_strategy = SupportResistanceStrategy()
         self.trend_following_strategy = TrendFollowingStrategy()
-        self.supported_strategies = ['support_resistance', 'market_profile', 'trend_following']
+        self.dual_timeframe_strategy = DualTimeFrameStrategy(
+            higher_timeframe=TimeFrame.Hour,
+            lower_timeframe=self.timeframe,
+            db_base_path=self.db_base_path,
+            market_analyzer=market_analyzer
+        )
+        
+        self.supported_strategies = [
+            'support_resistance', 
+            'market_profile', 
+            'trend_following',
+            'dual_timeframe_momentum'
+        ]
+        
         self.strategies = {
-            'support_resistance': self.support_resistance_strategy,
+            # 'support_resistance': self.support_resistance_strategy,
             # 'markov': self.markov_prediction,
-            # 'market_profile': self.market_profile_strategy
+            # 'market_profile': self.market_profile_strategy,
+            'dual_timeframe_momentum': self.dual_timeframe_strategy
         }
 
         # Initialize signal tracking
@@ -38,6 +53,9 @@ class StrategyHandler():
         self.signal_lock = threading.Lock()  # For thread safety
 
     def generate_signals(self, is_backtest=False, backtest_data=None):
+        logger.info("Generating signals...")
+        logger.info("Supported strategies: %r", self.supported_strategies)
+        logger.info("Tickers: %r", self.tickers)
         signal_data = dict()
 
         for ticker in self.tickers:
@@ -57,11 +75,12 @@ class StrategyHandler():
                     continue
                 signal: Signal = strategy.generate_signal(ticker, ticker_data)
                 if signal is not None and signal.action is not None:
-                    logger.debug("Signal generated for %r: %r", ticker, signal)
+                    logger.info("Signal generated for %r: %r", ticker, signal)
                     signal_data[ticker] = signal
                     # After generating signals, store them
                     self.add_signal(signal)
-            
+        
+        logger.info("Signals generated: %r", signal_data)
         return signal_data
 
     def add_signal(self, signal):

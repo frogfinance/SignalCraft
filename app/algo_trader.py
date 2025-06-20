@@ -46,9 +46,45 @@ class TradingSystem:
         self.trade_results = []  # Store results of backtested trades
         self.backtest_name = ''
         self.backtest_system = None
+        self.config = {}
+        self.market_analyzer = None
+        self.portfolio_analyzer = None
+
+
+    def initialize_agents(self):
+        from app.agents.market_analyzer_agent import MarketAnalyzerAgent
+            
+        # Get API keys from config or environment
+        alpaca_api_key = self.config.get('alpaca', {}).get('api_key')
+        alpaca_secret_key = self.config.get('alpaca', {}).get('secret_key')
+        alpaca_paper = self.config.get('alpaca', {}).get('paper', True)
+        openai_api_key = self.config.get('openai', {}).get('api_key')
+        
+        self.market_analyzer = MarketAnalyzerAgent(
+            agent_id="market_analyzer",
+            name="Market Analyzer",
+            alpaca_api_key=alpaca_api_key,
+            alpaca_secret_key=alpaca_secret_key,
+            alpaca_paper=alpaca_paper,
+            openai_api_key=openai_api_key,
+            lookback_days=30,
+            update_interval=15  # minutes
+        )
+
 
     async def run(self):
         logger.info("AlgoTrader loop is starting ->")
+        self.config = {
+                'backtest_mode': self.backtest_mode,
+                'alpaca': {
+                    'api_key': ALPACA_API_KEY,
+                    'secret_key': ALPACA_API_SECRET,
+                    'use_paper': USE_PAPER
+                },
+                'openai': {
+                    'api_key': os.getenv('OPENAI_API_KEY'),
+                }
+            }
         if self.backtest_mode:
             logger.info("Running loop in backtest mode...")
             backtest_system = BacktestingSystem(tickers, ALPACA_API_KEY, ALPACA_API_SECRET)
@@ -58,13 +94,15 @@ class TradingSystem:
             logger.info("AlgoTrader starting backtest mode ->")
             self.backtest_system = backtest_system
             # self.data_handler.fetch_data()
+            
         else:
+            self.initialize_agents()
             logger.info("Startup loop in live trading mode...")
-            self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', use_paper=USE_PAPER)    
+            self.execution_handler = ExecutionHandler(ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', use_paper=USE_PAPER, market_analyzer=self.market_analyzer)    
             logger.info("AlgoTrader ExecutionHandler started ->")
             self.data_handler = DataHandler(tickers, ALPACA_API_KEY, ALPACA_API_SECRET, db_base_path='dbs', timeframe=self.timeframe)
             logger.info("AlgoTrader DataHandler started ->")
-            self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe)
+            self.strategy_handler = StrategyHandler(tickers, db_base_path='dbs', timeframe=self.timeframe, market_analyzer=self.market_analyzer)
             logger.info("AlgoTrader StrategyHandler started ->")
             logger.info("AlgoTrader starting live trading mode ->")
             await self.run_algo_trader()

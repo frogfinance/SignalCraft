@@ -45,7 +45,7 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700">
+                    <a href="/agents" class="flex items-center px-4 py-2 text-gray-300 hover:bg-gray-700">
                         <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                         </svg>
@@ -151,6 +151,8 @@
                                 <th class="py-3 px-4 text-left">Side</th>
                                 <th class="py-3 px-4 text-left">Entry Price</th>
                                 <th class="py-3 px-4 text-left">Current Price</th>
+                                <th class="py-3 px-4 text-left">Stop Loss</th>
+                                <th class="py-3 px-4 text-left">Take Profit</th>
                                 <th class="py-3 px-4 text-left">P&L ($)</th>
                                 <th class="py-3 px-4 text-left">P&L (%)</th>
                             </tr>
@@ -164,6 +166,14 @@
                                 <td class="py-3 px-4">{{ position.side }}</td>
                                 <td class="py-3 px-4">${{ position.entry_price|round(2) }}</td>
                                 <td class="py-3 px-4">${{ position.current_price|round(2) }}</td>
+                                <!-- Add stop loss with conditional coloring -->
+                                <td class="py-3 px-4 {% if position.stop_loss %}text-red-400{% endif %}">
+                                    {% if position.stop_loss %}${{ position.stop_loss|round(2) }}{% else %}-{% endif %}
+                                </td>
+                                <!-- Add take profit with conditional coloring -->
+                                <td class="py-3 px-4 {% if position.take_profit %}text-green-400{% endif %}">
+                                    {% if position.take_profit %}${{ position.take_profit|round(2) }}{% else %}-{% endif %}
+                                </td>
                                 <td class="py-3 px-4 {% if position.pl > 0 %}text-green-400{% elif position.pl < 0 %}text-red-400{% endif %}">
                                     ${{ position.pl|round(2) }}
                                 </td>
@@ -188,6 +198,7 @@
                                 <th class="py-3 px-4 text-left">Time</th>
                                 <th class="py-3 px-4 text-left">Ticker</th>
                                 <th class="py-3 px-4 text-left">Side</th>
+                                <th class="py-3 px-4 text-left">Type</th>
                                 <th class="py-3 px-4 text-left">Price</th>
                                 <th class="py-3 px-4 text-left">Quantity</th>
                             </tr>
@@ -199,6 +210,15 @@
                                 <td class="py-3 px-4">{{ trade.ticker }}</td>
                                 <td class="py-3 px-4" class="{% if trade.side == 'BUY' %}text-green-400{% else %}text-red-400{% endif %}">
                                     {{ trade.side }}
+                                </td>
+                                <td class="py-3 px-4" class="{% if trade.is_stop_loss %}text-red-400 font-semibold{% elif trade.is_take_profit %}text-green-400 font-semibold{% endif %}">
+                                    {% if trade.is_stop_loss %}
+                                        Stop Loss
+                                    {% elif trade.is_take_profit %}
+                                        Take Profit
+                                    {% else %}
+                                        {{ trade.order_type|default('Market') }}
+                                    {% endif %}
                                 </td>
                                 <td class="py-3 px-4">${{ trade.price|float|round(2) }}</td>
                                 <td class="py-3 px-4">{{ trade.qty }}</td>
@@ -580,8 +600,6 @@ document.addEventListener("DOMContentLoaded", function() {
         const tradesTable = document.getElementById("trades-table");
         if (!tradesTable) return;
         
-        console.log("Updating trades table with", trades.length, "trades");
-        
         // Sort trades by timestamp (most recent first)
         const sortedTrades = [...trades].sort((a, b) => {
             const timeA = new Date(a.timestamp || a.time || 0).getTime();
@@ -595,14 +613,14 @@ document.addEventListener("DOMContentLoaded", function() {
         // Add rows for each trade
         if (sortedTrades.length === 0) {
             const emptyRow = document.createElement("tr");
-            emptyRow.innerHTML = `<td colspan="5" class="py-4 text-center text-gray-400">No trade history available</td>`;
+            emptyRow.innerHTML = `<td colspan="6" class="py-4 text-center text-gray-400">No trade history available</td>`;
             tradesTable.appendChild(emptyRow);
         } else {
             sortedTrades.forEach(trade => {
                 const row = document.createElement("tr");
                 row.className = "border-b border-gray-600";
                 
-                // Format timestamp - matches fields from _convert_trade in archiver.py
+                // Format timestamp
                 let formattedTime;
                 try {
                     const tradeTime = new Date(trade.timestamp);
@@ -614,10 +632,23 @@ document.addEventListener("DOMContentLoaded", function() {
                 // Determine side color
                 const sideClass = trade.side === 'BUY' ? 'text-green-400' : 'text-red-400';
                 
+                // Determine order type display text and class
+                let typeText = trade.order_type || "Market";
+                let typeClass = "";
+                
+                if (trade.is_stop_loss) {
+                    typeText = "Stop Loss";
+                    typeClass = "text-red-400 font-semibold";
+                } else if (trade.is_take_profit) {
+                    typeText = "Take Profit";
+                    typeClass = "text-green-400 font-semibold";
+                }
+                
                 row.innerHTML = `
                     <td class="py-3 px-4">${formattedTime}</td>
                     <td class="py-3 px-4">${trade.ticker}</td>
                     <td class="py-3 px-4 ${sideClass}">${trade.side}</td>
+                    <td class="py-3 px-4 ${typeClass}">${typeText}</td>
                     <td class="py-3 px-4">$${parseFloat(trade.price).toFixed(2)}</td>
                     <td class="py-3 px-4">${trade.qty}</td>
                 `;
@@ -643,6 +674,55 @@ document.addEventListener("DOMContentLoaded", function() {
         rows.forEach((row, index) => {
             row.style.display = (index >= start && index < end) ? '' : 'none';
         });
+    }
+    
+    // Update the positions table function
+    function updatePositionsTable(positions) {
+        const positionsTable = document.querySelector('section:has(h2:contains("Open Positions")) table tbody');
+        if (!positionsTable) return;
+        
+        // Clear existing rows
+        positionsTable.innerHTML = "";
+        
+        // Add rows for each position
+        if (positions.length === 0) {
+            const emptyRow = document.createElement("tr");
+            emptyRow.innerHTML = `<td colspan="9" class="py-4 text-center text-gray-400">No open positions</td>`;
+            positionsTable.appendChild(emptyRow);
+        } else {
+            positions.forEach(position => {
+                if (!position.is_open) return;
+                
+                const row = document.createElement("tr");
+                row.className = "border-b border-gray-600";
+                
+                // Determine P&L color classes
+                const plClass = position.pl > 0 ? 'text-green-400' : position.pl < 0 ? 'text-red-400' : '';
+                const plPctClass = position.pl_pct > 0 ? 'text-green-400' : position.pl_pct < 0 ? 'text-red-400' : '';
+                
+                // Determine stop loss and take profit classes
+                const stopLossClass = position.stop_loss ? 'text-red-400' : '';
+                const takeProfitClass = position.take_profit ? 'text-green-400' : '';
+                
+                row.innerHTML = `
+                    <td class="py-3 px-4">${position.ticker}</td>
+                    <td class="py-3 px-4">${position.qty}</td>
+                    <td class="py-3 px-4">${position.side}</td>
+                    <td class="py-3 px-4">$${parseFloat(position.entry_price).toFixed(2)}</td>
+                    <td class="py-3 px-4">$${parseFloat(position.current_price).toFixed(2)}</td>
+                    <td class="py-3 px-4 ${stopLossClass}">
+                        ${position.stop_loss ? '$' + parseFloat(position.stop_loss).toFixed(2) : '-'}
+                    </td>
+                    <td class="py-3 px-4 ${takeProfitClass}">
+                        ${position.take_profit ? '$' + parseFloat(position.take_profit).toFixed(2) : '-'}
+                    </td>
+                    <td class="py-3 px-4 ${plClass}">$${parseFloat(position.pl).toFixed(2)}</td>
+                    <td class="py-3 px-4 ${plPctClass}">${parseFloat(position.pl_pct).toFixed(2)}%</td>
+                `;
+                
+                positionsTable.appendChild(row);
+            });
+        }
     }
 });
 </script>

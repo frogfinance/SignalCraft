@@ -1,5 +1,6 @@
 import duckdb
 import logging
+import numpy as np
 from alpaca.data import TimeFrame
 from datetime import datetime
 
@@ -51,26 +52,59 @@ def get_ticker_data(ticker, connection, timeframe=TimeFrame.Minute, db_base_path
     return data
 
 
-def get_ticker_data_by_timeframe(ticker, connection, timeframe=TimeFrame.Minute, db_base_path='dbs', end: datetime = None):
-    if end is None:
-        raise ValueError("The 'end' parameter cannot be None.")
-    
-    # Format the `end` timestamp as a string that DuckDB can interpret
-    end_timestamp_str = end.strftime('%Y-%m-%d %H:%M:%S')
-
-    query = f"""
-        SELECT timestamp, open, high, low, close, volume, vwap 
-        FROM ticker_data 
-        WHERE timestamp < TIMESTAMP '{end_timestamp_str}' 
-        ORDER BY timestamp ASC
-    """
-    
+def get_ticker_data_by_timeframe(ticker, connection, timeframe, db_base_path="dbs", end=None):
+    """Get ticker data for a specific timeframe."""
     try:
-        data = connection.sql(query).df()  # Convert to Pandas DataFrame
+        # First, check if the table exists
+        table_check = connection.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ticker_data'").fetchall()
+        
+        if not table_check:
+            # Check if there's a table named after the ticker
+            alternate_table_check = connection.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{ticker}_data'").fetchall()
+            
+            if alternate_table_check:
+                # The table is named after the ticker
+                table_name = f"{ticker}_data"
+            else:
+                # As a last resort, check what tables are in the database
+                all_tables = connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+                logger.error(f"Available tables in database: {all_tables}")
+                
+                # Try one more option
+                if len(all_tables) > 0:
+                    table_name = all_tables[0][0]
+                else:
+                    raise ValueError(f"No tables found in database for {ticker} with timeframe {timeframe}")
+        else:
+            table_name = "ticker_data"
+        
+        # Now build and execute the query with the correct table name
+        query = f"""
+        SELECT * FROM {table_name} 
+        WHERE ticker = '{ticker}'
+        """
+        
+        if end is not None:
+            # Convert end to a string if it's a datetime
+            if isinstance(end, datetime):
+                end = end.isoformat()
+            query += f" AND timestamp <= '{end}'"
+            
+        query += " ORDER BY timestamp DESC LIMIT 500"
+        
+        logger.debug(f"Executing query: {query}")
+        data = connection.execute(query).fetchdf()
+        
+        if data.empty:
+            logger.warning(f"No data found for {ticker} with timeframe {timeframe}")
+            return pd.DataFrame()
+            
+        # Convert timestamp to datetime if it's not already
+        if 'timestamp' in data.columns and not pd.api.types.is_datetime64_any_dtype(data['timestamp']):
+            data['timestamp'] = pd.to_datetime(data['timestamp'])
+            
+        return data
+        
     except Exception as e:
-        connection.close()
-        logger.error("Error fetching data", exc_info=e)
-        connection = duckdb.connect(f"{db_base_path}/{ticker}_{timeframe}_data.db")
-        data = connection.sql(query).df()
-    
-    return data
+        logger.error(f"Error getting data for {ticker} with timeframe {timeframe}: {e}")
+        return pd.DataFrame()
