@@ -8,5 +8,11 @@ services:
       - "8000:8000"
     volumes:
       - ./dbs:/app/dbs
+      - ./data:/app/data
+    networks:
+      - signalcraft-net
 
 
+networks:
+  signalcraft-net:
+    driver: bridge
